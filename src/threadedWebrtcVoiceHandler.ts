@@ -200,6 +200,13 @@ export class ThreadedWebRTCVoiceHandler extends EventEmitter {
         
       case 4: // Session Description (encryption key)
         logger.info('Session description received');
+        logger.debug('Secret key details', {
+          hasSecretKey: !!message.d.secret_key,
+          secretKeyType: typeof message.d.secret_key,
+          secretKeyLength: message.d.secret_key?.length || 0,
+          secretKeyFirstBytes: message.d.secret_key ? Array.from(message.d.secret_key.slice(0, 8)) : [],
+          mode: message.d.mode || 'unknown'
+        });
         this.secretKey = Buffer.from(message.d.secret_key);
         
         // Initialize workers with encryption details
