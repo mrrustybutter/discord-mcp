@@ -17,8 +17,17 @@ The Discord MCP server uses a multi-threaded architecture for optimal performanc
 
 - **Main Thread**: Handles Discord WebSocket connection, HTTP server, and UDP socket
 - **Encoding Worker**: Encodes PCM audio to Opus for transmission
-- **Decoding Worker**: Decodes received Opus audio to PCM
+- **Decoding Worker**: Decodes received Opus audio to PCM with xsalsa20_poly1305_lite encryption
 - **Voice Handler**: Manages WebRTC connection, audio pipeline, and transcription
+
+## Recent Fixes
+
+- **Voice Decryption**: Fixed xsalsa20_poly1305_lite nonce construction for proper audio decryption
+- **User Identification**: Implemented SSRC to Discord user ID mapping for accurate transcription attribution
+- **Audio Buffering**: Enhanced audio buffer management for reliable speech-to-text processing
+- **ElevenLabs STT**: Fixed API integration with correct field names and model parameters
+
+See [VOICE_DECRYPTION_FIX.md](./VOICE_DECRYPTION_FIX.md) for technical details.
 
 ## Prerequisites
 
