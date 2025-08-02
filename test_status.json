@@ -1,9 +1,0 @@
-{
-  "jsonrpc": "2.0",
-  "id": 22,
-  "method": "tools/call",
-  "params": {
-    "name": "discord_get_status",
-    "arguments": {}
-  }
-}

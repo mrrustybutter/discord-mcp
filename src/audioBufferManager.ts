@@ -1,4 +1,7 @@
 import { EventEmitter } from 'events';
+import { loggers } from './logger.js';
+
+const logger = loggers.voice;
 
 interface AudioChunk {
   pcmData: Buffer;
@@ -52,7 +55,7 @@ export class AudioBufferManager extends EventEmitter {
       this.flushBuffer(userId);
     }
 
-    console.error(`[AudioBufferManager] Added chunk for ${userId}, buffer size: ${userBuffer.length} chunks`);
+    logger.debug('Added audio chunk', { userId, bufferSize: userBuffer.length });
   }
 
   private flushBuffer(userId: string): void {
@@ -61,7 +64,7 @@ export class AudioBufferManager extends EventEmitter {
       return;
     }
 
-    console.error(`[AudioBufferManager] Flushing buffer for ${userId} with ${userBuffer.length} chunks`);
+    logger.debug('Flushing audio buffer', { userId, chunks: userBuffer.length });
 
     // Combine all PCM data
     const combinedBuffer = Buffer.concat(userBuffer.map(chunk => chunk.pcmData));
@@ -97,7 +100,7 @@ export class AudioBufferManager extends EventEmitter {
   }
 
   forceFlushAll(): void {
-    console.error('[AudioBufferManager] Force flushing all buffers');
+    logger.debug('Force flushing all buffers');
     for (const userId of this.buffers.keys()) {
       this.flushBuffer(userId);
     }

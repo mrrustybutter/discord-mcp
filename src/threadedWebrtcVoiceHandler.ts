@@ -8,6 +8,9 @@ import { ElevenLabsSTT } from './elevenlabsStt.js';
 import { spawn } from 'child_process';
 import { createWriteStream, appendFileSync } from 'fs';
 import { EventEmitter } from 'events';
+import { loggers } from './logger.js';
+
+const logger = loggers.voice;
 
 interface VoiceConnectionOptions {
   endpoint: string;
@@ -53,31 +56,31 @@ export class ThreadedWebRTCVoiceHandler extends EventEmitter {
     try {
       appendFileSync(this.debugLogPath, logMessage);
     } catch (error) {
-      console.error('Failed to write debug log:', error);
+      logger.error('Failed to write debug log', { error });
     }
   }
 
   constructor() {
     super();
     this.debugLog('[ThreadedWebRTC] Initializing multi-threaded voice handler');
-    console.error('[ThreadedWebRTC] Initializing multi-threaded voice handler');
+    logger.info('Initializing multi-threaded voice handler');
     
     // Initialize worker threads
     try {
       this.debugLog('[ThreadedWebRTC] Creating audio encoding worker...');
-      console.error('[ThreadedWebRTC] Creating audio encoding worker...');
+      logger.debug('Creating audio encoding worker');
       this.encodingWorker = new AudioEncodingWorker();
       this.debugLog('[ThreadedWebRTC] Audio encoding worker created');
-      console.error('[ThreadedWebRTC] Audio encoding worker created');
+      logger.debug('Audio encoding worker created');
       
       this.debugLog('[ThreadedWebRTC] Creating audio decoding worker...');
-      console.error('[ThreadedWebRTC] Creating audio decoding worker...');
+      logger.debug('Creating audio decoding worker');
       this.decodingWorker = new AudioDecodingWorker();
       this.debugLog('[ThreadedWebRTC] Audio decoding worker created');
-      console.error('[ThreadedWebRTC] Audio decoding worker created');
+      logger.debug('Audio decoding worker created');
     } catch (error) {
       this.debugLog(`[ThreadedWebRTC] Failed to create workers: ${error}`);
-      console.error('[ThreadedWebRTC] Failed to create workers:', error);
+      logger.error('Failed to create workers', { error });
     }
     
     // Initialize speech-to-text components
@@ -89,7 +92,7 @@ export class ThreadedWebRTCVoiceHandler extends EventEmitter {
       this.audioBufferManager.on('audioReady', async (data) => {
         if (this.transcriptionEnabled && this.elevenLabsSTT) {
           try {
-            console.error(`[ThreadedWebRTC] Transcribing audio from ${data.userId}...`);
+            logger.info('Transcribing audio', { userId: data.userId });
             const result = await this.elevenLabsSTT.transcribeAudio(data.audioBuffer, {
               timestamps: 'word',
               speakerDiarization: false
@@ -103,21 +106,21 @@ export class ThreadedWebRTCVoiceHandler extends EventEmitter {
               words: result.words
             });
           } catch (error) {
-            console.error('[ThreadedWebRTC] Transcription error:', error);
+            logger.error('Transcription error', { error });
           }
         }
       });
       
-      console.error('[ThreadedWebRTC] Speech-to-text initialized');
+      logger.info('Speech-to-text initialized');
     } catch (error) {
-      console.error('[ThreadedWebRTC] STT initialization failed:', error);
+      logger.error('STT initialization failed', { error });
       this.transcriptionEnabled = false;
     }
   }
 
   async connect(_options: VoiceConnectionOptions, voiceWebsocket: WebSocket): Promise<void> {
     this.debugLog('[ThreadedWebRTC] Connected with existing websocket');
-    console.error('[ThreadedWebRTC] Connected with existing websocket');
+    logger.info('Connected with existing websocket');
     this.voiceWebsocket = voiceWebsocket;
   }
   
@@ -126,7 +129,7 @@ export class ThreadedWebRTCVoiceHandler extends EventEmitter {
       case 2: // Ready
         this.debugLog('[ThreadedWebRTC] Voice Ready received');
         this.debugLog(`[ThreadedWebRTC] Voice data: ${JSON.stringify(message.d)}`);
-        console.error('[ThreadedWebRTC] Voice Ready received');
+        logger.info('Voice Ready received');
         const { ssrc, ip, port, modes } = message.d;
         
         this.ssrc = ssrc;
@@ -137,7 +140,7 @@ export class ThreadedWebRTCVoiceHandler extends EventEmitter {
         this.mode = modes.includes('xsalsa20_poly1305_lite') ? 
           'xsalsa20_poly1305_lite' : 'plain';
         
-        console.error(`[ThreadedWebRTC] Using mode: ${this.mode}`);
+        logger.debug('Using encryption mode', { mode: this.mode });
         
         // Create UDP socket
         this.udpSocket = dgram.createSocket('udp4');
@@ -148,49 +151,49 @@ export class ThreadedWebRTCVoiceHandler extends EventEmitter {
         // Set up UDP packet receiving for decoding
         this.udpSocket.on('message', async (packet) => {
           this.debugLog(`[ThreadedWebRTC] UDP packet received! Size: ${packet.length} bytes`);
-          console.error(`[ThreadedWebRTC] UDP packet received! Size: ${packet.length} bytes`);
+          logger.debug('UDP packet received', { size: packet.length });
           if (this.decodingWorker) {
             try {
-              console.error('[ThreadedWebRTC] Sending packet to decoding worker...');
+              logger.debug('Sending packet to decoding worker');
               const decoded = await this.decodingWorker.decodeFrame(packet);
-              console.error(`[ThreadedWebRTC] Decoded frame - PCM size: ${decoded.pcmData.length}, sequence: ${decoded.sequence}`);
+              logger.debug('Decoded frame', { pcmSize: decoded.pcmData.length, sequence: decoded.sequence });
               this.emit('audioReceived', decoded);
               
               // Add to transcription buffer if enabled
               if (this.transcriptionEnabled && this.audioBufferManager && decoded.pcmData.length > 0) {
                 // Use sequence number as rough user ID for now (Discord provides SSRC mapping)
                 const userId = `user_${decoded.sequence % 1000}`; // Simplified user identification
-                console.error(`[ThreadedWebRTC] Adding audio chunk to buffer for user: ${userId}`);
+                logger.debug('Adding audio chunk to buffer', { userId });
                 this.audioBufferManager.addAudioChunk(userId, decoded.pcmData);
               } else {
-                console.error(`[ThreadedWebRTC] Transcription disabled or no audio data - enabled: ${this.transcriptionEnabled}, bufferManager: ${!!this.audioBufferManager}, pcmSize: ${decoded.pcmData.length}`);
+                logger.debug('Skipping transcription', { enabled: this.transcriptionEnabled, hasBufferManager: !!this.audioBufferManager, pcmSize: decoded.pcmData.length });
               }
             } catch (error) {
-              console.error('[ThreadedWebRTC] Decode error:', error);
+              logger.error('Decode error', { error });
             }
           } else {
-            console.error('[ThreadedWebRTC] No decoding worker available!');
+            logger.error('No decoding worker available!');
           }
         });
         
         break;
         
       case 4: // Session Description (encryption key)
-        console.error('[ThreadedWebRTC] Session description received');
+        logger.info('Session description received');
         this.secretKey = Buffer.from(message.d.secret_key);
         
         // Initialize workers with encryption details
         if (this.encodingWorker && this.ssrc) {
           await this.encodingWorker.initialize(this.ssrc, this.secretKey, this.mode!);
-          console.error('[ThreadedWebRTC] Encoding worker initialized');
+          logger.debug('Encoding worker initialized');
         }
         
         if (this.decodingWorker) {
-          console.error(`[ThreadedWebRTC] Initializing decoding worker with mode: ${this.mode}`);
+          logger.debug('Initializing decoding worker', { mode: this.mode });
           await this.decodingWorker.initialize(this.secretKey, this.mode!);
-          console.error('[ThreadedWebRTC] Decoding worker initialized and ready for audio packets');
+          logger.info('Decoding worker initialized and ready for audio packets');
         } else {
-          console.error('[ThreadedWebRTC] No decoding worker available for initialization!');
+          logger.error('No decoding worker available for initialization!');
         }
         
         this.emit('ready');
@@ -232,7 +235,7 @@ export class ThreadedWebRTCVoiceHandler extends EventEmitter {
         const ip = response.slice(8, response.indexOf(0, 8)).toString();
         const port = response.readUInt16BE(response.length - 2);
         
-        console.error(`[ThreadedWebRTC] IP Discovery: ${ip}:${port}`);
+        logger.info('IP Discovery complete', { ip, port });
         
         // Send select protocol
         this.voiceWebsocket!.send(JSON.stringify({
@@ -257,7 +260,7 @@ export class ThreadedWebRTCVoiceHandler extends EventEmitter {
       throw new Error('Voice connection not ready');
     }
     
-    console.error('[ThreadedWebRTC] Starting threaded audio playback');
+    logger.info('Starting threaded audio playback');
     
     // Convert audio to PCM if needed
     const pcmData = await this.convertToPCM(audioBuffer);
@@ -266,7 +269,7 @@ export class ThreadedWebRTCVoiceHandler extends EventEmitter {
     const frameSize = 960 * 2 * 2; // 20ms frames
     const frameCount = Math.ceil(pcmData.length / frameSize);
     
-    console.error(`[ThreadedWebRTC] Queuing ${frameCount} frames for threaded processing`);
+    logger.debug('Queuing frames for threaded processing', { frameCount });
     
     // Process frames in worker thread
     const processedFrames: Buffer[] = [];
@@ -292,7 +295,7 @@ export class ThreadedWebRTCVoiceHandler extends EventEmitter {
       this.timestamp += 960; // 20ms worth of samples
     }
     
-    console.error('[ThreadedWebRTC] All frames processed by worker, starting direct transmission');
+    logger.debug('All frames processed by worker, starting direct transmission');
     
     // For batch audio, use direct transmission instead of jitter buffer
     this.sendQueue = processedFrames;
@@ -313,7 +316,7 @@ export class ThreadedWebRTCVoiceHandler extends EventEmitter {
     
     const sendNextFrame = () => {
       if (frameIndex >= this.sendQueue.length) {
-        console.error('[ThreadedWebRTC] Direct transmission complete');
+        logger.info('Direct transmission complete');
         this.setSpeaking(false);
         this.isSending = false;
         this.sendQueue = [];
@@ -324,7 +327,7 @@ export class ThreadedWebRTCVoiceHandler extends EventEmitter {
       const packet = this.sendQueue[frameIndex];
       this.udpSocket!.send(packet, this.port!, this.address!, (err) => {
         if (err) {
-          console.error('[ThreadedWebRTC] Send error:', err);
+          logger.error('Send error', { error: err });
         }
       });
       
@@ -393,7 +396,7 @@ export class ThreadedWebRTCVoiceHandler extends EventEmitter {
 
   setTranscriptionEnabled(enabled: boolean): void {
     this.transcriptionEnabled = enabled;
-    console.error(`[ThreadedWebRTC] Transcription ${enabled ? 'enabled' : 'disabled'}`);
+    logger.info('Transcription setting changed', { enabled });
   }
 
   getTranscriptionStats(): any {
@@ -401,7 +404,7 @@ export class ThreadedWebRTCVoiceHandler extends EventEmitter {
   }
 
   disconnect(): void {
-    console.error('[ThreadedWebRTC] Disconnecting and cleaning up workers');
+    logger.info('Disconnecting and cleaning up workers');
     
     if (this.encodingWorker) {
       this.encodingWorker.terminate();

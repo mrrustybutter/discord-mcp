@@ -2,6 +2,9 @@ import puppeteer, { Browser, Page } from 'puppeteer';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { loggers } from './logger.js';
+
+const logger = loggers.discord;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,7 +22,7 @@ export class DiscordLogin {
 
   async login(username: string, password: string): Promise<LoginResult> {
     try {
-      console.error('[Discord Login] Starting browser...');
+      logger.info('Starting browser for Discord login');
       
       // Launch browser with Discord-like user agent
       this.browser = await puppeteer.launch({
@@ -52,7 +55,7 @@ export class DiscordLogin {
       });
 
       // Navigate to Discord login
-      console.error('[Discord Login] Navigating to Discord...');
+      logger.info('Navigating to Discord');
       await this.page.goto('https://discord.com/login', { 
         waitUntil: 'networkidle2',
         timeout: 30000 
@@ -63,7 +66,7 @@ export class DiscordLogin {
       await this.page.waitForSelector('input[name="password"]', { timeout: 10000 });
 
       // Type username
-      console.error('[Discord Login] Entering credentials...');
+      logger.info('Entering credentials');
       await this.page.type('input[name="email"]', username, { delay: 100 });
       
       // Type password
@@ -73,7 +76,7 @@ export class DiscordLogin {
       await this.page.click('button[type="submit"]');
 
       // Wait for navigation or captcha
-      console.error('[Discord Login] Waiting for login response...');
+      logger.info('Waiting for login response');
       
       try {
         // Wait for either successful login or captcha
@@ -83,13 +86,13 @@ export class DiscordLogin {
           this.page.waitForSelector('[class*="captcha"]', { timeout: 30000 })
         ]);
       } catch (e) {
-        console.error('[Discord Login] Navigation timeout, checking current state...');
+        logger.warn('Navigation timeout, checking current state');
       }
 
       // Check if we need to handle captcha
       const captchaFrame = await this.page.$('iframe[src*="hcaptcha"]');
       if (captchaFrame) {
-        console.error('[Discord Login] CAPTCHA detected! Please solve it manually...');
+        logger.warn('CAPTCHA detected! Please solve it manually');
         // Wait for user to solve captcha
         await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 120000 });
       }
@@ -105,7 +108,7 @@ export class DiscordLogin {
         throw new Error('Login failed - not redirected to app');
       }
 
-      console.error('[Discord Login] Successfully logged in!');
+      logger.info('Successfully logged in!');
 
       // Get cookies
       const cookies = await this.page.cookies();
@@ -176,7 +179,7 @@ export class DiscordLogin {
             }
           }
         } catch (e) {
-          console.error('[Token Extract] Error:', e);
+          logger.debug('Token extraction error', { error: e });
         }
         
         return null;
@@ -191,7 +194,7 @@ export class DiscordLogin {
         timestamp: new Date().toISOString()
       }, null, 2));
 
-      console.error('[Discord Login] Saved authentication data');
+      logger.info('Saved authentication data');
 
       // Close the browser now that we have what we need
       await this.close();
@@ -203,7 +206,7 @@ export class DiscordLogin {
       };
 
     } catch (error) {
-      console.error('[Discord Login] Error:', error);
+      logger.error('Discord login error', { error });
       
       // Make sure to close browser on error too
       await this.close();

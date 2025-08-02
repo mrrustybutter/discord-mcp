@@ -1,9 +1,0 @@
-{
-  "jsonrpc": "2.0",
-  "id": 23,
-  "method": "tools/call",
-  "params": {
-    "name": "discord_connect",
-    "arguments": {}
-  }
-}

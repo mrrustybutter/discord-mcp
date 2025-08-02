@@ -1,12 +1,13 @@
 import WebSocket from 'ws';
 import { EventEmitter } from 'events';
-import { WebRTCVoiceHandler } from './webrtcVoiceHandler.js';
 import { ThreadedWebRTCVoiceHandler } from './threadedWebrtcVoiceHandler.js';
-import { SimpleVoiceHandler } from './simpleVoiceHandler.js';
 import { DiscordLogin } from './discordLogin.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { loggers } from './logger.js';
+
+const logger = loggers.discord;
 
 interface SuperProperties {
   os: string;
@@ -97,7 +98,7 @@ export class UserDiscordClient extends EventEmitter {
     
     // Try environment variable first
     if (!this.cookie && process.env.DISCORD_USER_COOKIE) {
-      console.error('[Discord] Using cookie from environment variable');
+      logger.info('Using cookie from environment variable');
       this.cookie = process.env.DISCORD_USER_COOKIE;
     }
     
@@ -105,21 +106,21 @@ export class UserDiscordClient extends EventEmitter {
     if (!this.cookie) {
       try {
         const cookieFile = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'discord_cookies.json');
-        console.error('[Discord] Looking for cookies at:', cookieFile);
+        logger.debug('Looking for cookies at', { path: cookieFile });
         const savedData = await fs.readFile(cookieFile, 'utf-8');
         const parsed = JSON.parse(savedData);
-        console.error('[Discord] Parsed cookies - has cookieString:', !!parsed.cookieString, 'has token:', !!parsed.token);
+        logger.debug('Parsed cookies', { hasCookieString: !!parsed.cookieString, hasToken: !!parsed.token });
         if (parsed.cookieString) {
           this.cookie = parsed.cookieString;
           // Only use saved token if we're using saved cookies (not env cookie)
           if (parsed.token && !process.env.DISCORD_USER_COOKIE) {
             this.token = parsed.token;
-            console.error('[Discord] Token loaded from saved file');
+            logger.info('Token loaded from saved file');
           }
-          console.error('[Discord] Using saved cookie from previous login');
+          logger.info('Using saved cookie from previous login');
         }
       } catch (e) {
-        console.error('[Discord] Failed to load saved cookies:', e);
+        logger.debug('Failed to load saved cookies', { error: e });
       }
     }
     
@@ -131,16 +132,16 @@ export class UserDiscordClient extends EventEmitter {
         const parsed = JSON.parse(savedData);
         if (parsed.token && typeof parsed.token === 'string' && parsed.token.length > 50) {
           this.token = parsed.token;
-          console.error('[Discord] Token loaded from saved file for env cookie');
+          logger.info('Token loaded from saved file for env cookie');
         }
       } catch (e) {
-        console.error('[Discord] Failed to load saved token:', e);
+        logger.debug('Failed to load saved token', { error: e });
       }
     }
     
     // If still no cookie and we have credentials, try to login
     if (!this.cookie && process.env.DISCORD_USERNAME && process.env.DISCORD_PASSWORD) {
-      console.error('[Discord] No cookie found, attempting login...');
+      logger.info('No cookie found, attempting login');
       const login = new DiscordLogin();
       const result = await login.login(
         process.env.DISCORD_USERNAME,
@@ -152,7 +153,7 @@ export class UserDiscordClient extends EventEmitter {
         if (result.token) {
           this.token = result.token;
         }
-        console.error('[Discord] Login successful, using fresh cookie');
+        logger.info('Login successful, using fresh cookie');
       } else {
         throw new Error(`Login failed: ${result.error}`);
       }
@@ -182,7 +183,7 @@ export class UserDiscordClient extends EventEmitter {
     });
 
     this.ws.on('open', () => {
-      console.error('[Discord] WebSocket connected');
+      logger.info('WebSocket connected');
       // Don't emit ready here - wait for READY dispatch
     });
 
@@ -191,12 +192,12 @@ export class UserDiscordClient extends EventEmitter {
     });
 
     this.ws.on('close', (code, reason) => {
-      console.error(`[Discord] WebSocket closed: ${code} - ${reason}`);
+      logger.warn('WebSocket closed', { code, reason: reason?.toString() });
       this.cleanup();
     });
 
     this.ws.on('error', (error) => {
-      console.error('[Discord] WebSocket error:', error);
+      logger.error('WebSocket error', { error });
     });
   }
 
@@ -215,11 +216,11 @@ export class UserDiscordClient extends EventEmitter {
       case 11: // Heartbeat ACK
         break;
       case 7: // Reconnect
-        console.error('[Discord] Server requested reconnect');
+        logger.warn('Server requested reconnect');
         this.reconnect();
         break;
       case 9: // Invalid Session
-        console.error('[Discord] Invalid session');
+        logger.warn('Invalid session');
         if (message.d) {
           this.reconnect();
         } else {
@@ -253,11 +254,11 @@ export class UserDiscordClient extends EventEmitter {
   private async identify(): Promise<void> {
     // If we don't have a token, try to get one through login
     if (!this.token) {
-      console.error('[Discord] No token available, attempting to get one through login...');
+      logger.info('No token available, attempting to get one through login');
       
       // Check if we have login credentials
       if (process.env.DISCORD_USERNAME && process.env.DISCORD_PASSWORD) {
-        console.error('[Discord] Attempting fresh login to get token...');
+        logger.info('Attempting fresh login to get token');
         const login = new DiscordLogin();
         const result = await login.login(
           process.env.DISCORD_USERNAME,
@@ -269,7 +270,7 @@ export class UserDiscordClient extends EventEmitter {
           if (result.cookie) {
             this.cookie = result.cookie;
           }
-          console.error('[Discord] Fresh login successful, got new token');
+          logger.info('Fresh login successful, got new token');
         } else {
           throw new Error(`Login failed to get token: ${result.error}`);
         }
@@ -281,14 +282,14 @@ export class UserDiscordClient extends EventEmitter {
           });
           
           if (response.ok) {
-            console.error('[Discord] Cookie appears valid, but no auth token available');
+            logger.warn('Cookie appears valid, but no auth token available');
             throw new Error('Valid cookie found but no auth token available - need DISCORD_USERNAME/PASSWORD for login');
           } else {
-            console.error('[Discord] Cookie validation failed:', response.status);
+            logger.error('Cookie validation failed', { status: response.status });
             throw new Error(`Cookie validation failed: ${response.status} - need DISCORD_USERNAME/PASSWORD for login`);
           }
         } catch (error) {
-          console.error('[Discord] Error validating cookie:', error);
+          logger.error('Error validating cookie', { error });
           throw new Error('No authentication token available and no login credentials provided');
         }
       }
@@ -319,7 +320,7 @@ export class UserDiscordClient extends EventEmitter {
       }
     };
 
-    console.error('[Discord] Sending identify with token');
+    logger.info('Sending identify with token');
     this.ws?.send(JSON.stringify(payload));
   }
 
@@ -334,11 +335,11 @@ export class UserDiscordClient extends EventEmitter {
       if (response.ok) {
         // If this works, we can try to extract token from headers or make other API calls
         // But for now, we don't have a reliable way to extract the token from cookies alone
-        console.error('[Discord] API access works with cookies, but we need WebSocket token');
+        logger.debug('API access works with cookies, but we need WebSocket token');
         return null;
       }
     } catch (error) {
-      console.error('[Discord] Failed to extract token from cookie:', error);
+      logger.error('Failed to extract token from cookie', { error });
     }
     return null;
   }
@@ -349,20 +350,20 @@ export class UserDiscordClient extends EventEmitter {
     switch (eventType) {
       case 'READY':
         this.sessionId = data.session_id;
-        console.error(`[Discord] Logged in as ${data.user.username}#${data.user.discriminator}`);
-        console.error(`[Discord] Ready event - Token available: ${!!this.token}`);
+        logger.info('Logged in successfully', { username: `${data.user.username}#${data.user.discriminator}` });
+        logger.debug('Ready event', { tokenAvailable: !!this.token });
         // Store user data for later use
         this.user = data.user;
         this.emit('ready', data);
         break;
         
       case 'VOICE_STATE_UPDATE':
-        console.error('[Discord] VOICE_STATE_UPDATE received:', data);
+        logger.error('🎤 VOICE_STATE_UPDATE RECEIVED!', { data, timestamp: new Date().toISOString() });
         this.handleVoiceStateUpdate(data);
         break;
         
       case 'VOICE_SERVER_UPDATE':
-        console.error('[Discord] VOICE_SERVER_UPDATE received:', data);
+        logger.error('🔊 VOICE_SERVER_UPDATE RECEIVED!', { data, timestamp: new Date().toISOString() });
         this.handleVoiceServerUpdate(data);
         break;
         
@@ -371,12 +372,21 @@ export class UserDiscordClient extends EventEmitter {
         break;
         
       default:
-        // Log unexpected events for debugging
-        if (eventType !== 'GUILD_CREATE' && eventType !== 'READY_SUPPLEMENTAL' && 
-            eventType !== 'SESSIONS_REPLACE' && eventType !== 'USER_REQUIRED_ACTION_UPDATE' &&
-            eventType !== 'MESSAGE_ACK') {
-          console.error(`[Discord] Received event: ${eventType}`);
+        // Log ALL events for debugging voice issues - SHOW EVENT TYPE!
+        logger.info('Discord event', { 
+          eventType: eventType,
+          hasData: !!data,
+          dataKeys: data ? Object.keys(data) : [],
+          isVoiceRelated: eventType.includes('VOICE'),
+          guildId: data?.guild_id,
+          channelId: data?.channel_id
+        });
+        
+        // Log specific details for voice-related events
+        if (eventType.includes('VOICE')) {
+          logger.error('VOICE EVENT FOUND!', { eventType, data });
         }
+        
         // Always emit the event
         this.emit(eventType, data);
     }
@@ -388,16 +398,16 @@ export class UserDiscordClient extends EventEmitter {
   }
 
   private async handleVoiceServerUpdate(data: any): Promise<void> {
-    console.error('[Voice] Server update received:', data);
-    console.error('[Voice] Voice server token:', data.token ? 'Present' : 'Missing');
-    console.error('[Voice] Voice server endpoint:', data.endpoint);
-    console.error('[Voice] Current user ID:', this.user?.id);
-    console.error('[Voice] Voice states map size:', this.voiceStates.size);
+    logger.info('Voice server update received', data);
+    logger.debug('Voice server token', { present: !!data.token });
+    logger.debug('Voice server endpoint', { endpoint: data.endpoint });
+    logger.debug('Current user ID', { userId: this.user?.id });
+    logger.debug('Voice states map size', { size: this.voiceStates.size });
     
     // Get our own voice state for this guild
     let voiceState: VoiceState | undefined;
     for (const [userId, state] of this.voiceStates) {
-      console.error('[Voice] Checking voice state - userId:', userId, 'guildId:', state.guild_id, 'channelId:', state.channel_id);
+      logger.debug('Checking voice state', { userId, guildId: state.guild_id, channelId: state.channel_id });
       if (state.guild_id === data.guild_id && userId === this.user?.id) {
         voiceState = state;
         break;
@@ -405,8 +415,8 @@ export class UserDiscordClient extends EventEmitter {
     }
     
     if (!voiceState) {
-      console.error('[Voice] No voice state found for guild:', data.guild_id);
-      console.error('[Voice] All voice states:', Array.from(this.voiceStates.entries()));
+      logger.warn('No voice state found for guild', { guildId: data.guild_id });
+      logger.debug('All voice states', { states: Array.from(this.voiceStates.entries()) });
       return;
     }
 
@@ -424,7 +434,7 @@ export class UserDiscordClient extends EventEmitter {
     });
     
     this.voiceWebsocket.on('open', () => {
-      console.error('[Voice WebSocket] Connected');
+      logger.info('Voice WebSocket connected');
       // Send voice identify
       this.voiceWebsocket?.send(JSON.stringify({
         op: 0,
@@ -443,11 +453,11 @@ export class UserDiscordClient extends EventEmitter {
     });
     
     this.voiceWebsocket.on('error', (error) => {
-      console.error('[Voice WebSocket] Error:', error);
+      logger.error('Voice WebSocket error', { error });
     });
     
     this.voiceWebsocket.on('close', (code, reason) => {
-      console.error('[Voice WebSocket] Closed:', code, reason?.toString());
+      logger.warn('Voice WebSocket closed', { code, reason: reason?.toString() });
       // Clean up voice handler
       if (this.webrtcHandler) {
         this.webrtcHandler.disconnect();
@@ -457,7 +467,7 @@ export class UserDiscordClient extends EventEmitter {
   }
 
   private async handleVoiceMessage(message: any): Promise<void> {
-    console.error('[Voice] Message received:', { op: message.op, t: message.t, seq: message.seq });
+    logger.debug('Voice message received', { op: message.op, t: message.t, seq: message.seq });
     
     // Track sequence numbers
     if (message.seq !== undefined) {
@@ -466,10 +476,10 @@ export class UserDiscordClient extends EventEmitter {
     
     switch (message.op) {
       case 2: // Ready
-        console.error('[Voice] Ready event received:', message.d);
+        logger.info('Voice ready event received', message.d);
         // Create WebRTC handler
         if (!this.webrtcHandler) {
-          console.error('[Voice] Creating ThreadedWebRTCVoiceHandler');
+          logger.info('Creating ThreadedWebRTCVoiceHandler');
           this.webrtcHandler = new ThreadedWebRTCVoiceHandler();
         }
         
@@ -483,7 +493,7 @@ export class UserDiscordClient extends EventEmitter {
         }
         
         if (voiceState && this.voiceWebsocket) {
-          console.error('[Voice] Setting up WebRTC with voice state:', voiceState);
+          logger.debug('Setting up WebRTC with voice state', voiceState);
           
           // Connect the WebRTC voice handler
           if (this.voiceWebsocket) {
@@ -499,18 +509,18 @@ export class UserDiscordClient extends EventEmitter {
             await this.webrtcHandler.handleVoiceMessage({ op: 2, d: message.d });
           }
         } else {
-          console.error('[Voice] No voice state found!');
+          logger.error('No voice state found!');
         }
         break;
         
       case 8: // Hello
-        console.error('[Voice] Hello received, starting heartbeat');
+        logger.info('Voice hello received, starting heartbeat');
         // Start voice heartbeat
         this.startVoiceHeartbeat(message.d.heartbeat_interval);
         break;
         
       case 6: // Heartbeat ACK
-        console.error('[Voice] Heartbeat ACK received');
+        logger.debug('Voice heartbeat ACK received');
         break;
         
       default:
@@ -531,7 +541,7 @@ export class UserDiscordClient extends EventEmitter {
       clearInterval(this.voiceHeartbeatInterval);
     }
     
-    console.error('[Voice] Starting heartbeat with suggested interval:', interval, 'but using 5000ms');
+    logger.debug('Starting voice heartbeat', { suggestedInterval: interval, actualInterval: 5000 });
     // Use 5 second interval like the browser does, not the suggested interval
     this.voiceHeartbeatInterval = setInterval(() => {
       if (this.voiceWebsocket?.readyState === WebSocket.OPEN) {
@@ -542,7 +552,7 @@ export class UserDiscordClient extends EventEmitter {
             seq_ack: this.voiceSequence
           }
         };
-        console.error('[Voice] Sending heartbeat:', heartbeat);
+        logger.debug('Sending voice heartbeat', heartbeat);
         this.voiceWebsocket.send(JSON.stringify(heartbeat));
       }
     }, 5000); // Send every 5 seconds like the browser
@@ -553,8 +563,8 @@ export class UserDiscordClient extends EventEmitter {
       throw new Error('Not connected to Discord');
     }
     
-    console.error('[Discord] Sending voice state update for guild:', guildId, 'channel:', channelId);
-    console.error('[Discord] WebSocket state:', this.ws.readyState);
+    logger.info('Sending voice state update', { guildId, channelId });
+    logger.debug('WebSocket state', { readyState: this.ws.readyState });
 
     // Send voice state update
     const voiceStatePayload = {
@@ -569,9 +579,9 @@ export class UserDiscordClient extends EventEmitter {
       }
     };
     
-    console.error('[Discord] Voice state payload:', JSON.stringify(voiceStatePayload));
+    logger.debug('Voice state payload', voiceStatePayload);
     this.ws.send(JSON.stringify(voiceStatePayload));
-    console.error('[Discord] Voice state update sent');
+    logger.debug('Voice state update sent');
   }
 
   async leaveVoiceChannel(guildId: string): Promise<void> {
@@ -635,13 +645,13 @@ export class UserDiscordClient extends EventEmitter {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[Discord API Error] Status: ${response.status}, Body: ${errorText}`);
-      console.error(`[Discord API Error] Using token: ${this.token ? 'Yes' : 'No'}`);
+      logger.error('Discord API Error', { status: response.status, body: errorText });
+      logger.debug('API Error - Token status', { hasToken: !!this.token });
       
       // Handle rate limits
       if (response.status === 429) {
         const retryAfter = response.headers.get('retry-after');
-        console.error(`[Discord] Rate limited. Retry after ${retryAfter}s`);
+        logger.warn('Rate limited', { retryAfter: `${retryAfter}s` });
       }
       
       throw new Error(`Failed to get guilds: ${response.status}`);
@@ -673,7 +683,7 @@ export class UserDiscordClient extends EventEmitter {
       });
 
       if (!response.ok) {
-        console.error(`[Discord] Failed to get members (${response.status}), using fallback`);
+        logger.warn('Failed to get members, using fallback', { status: response.status });
         // Return basic info for current user as fallback
         if (this.user) {
           return [{ id: this.user.id, username: this.user.username }];
@@ -687,7 +697,7 @@ export class UserDiscordClient extends EventEmitter {
         .filter(m => m.voice?.channel_id === channelId)
         .map(m => ({ id: m.user.id, username: m.user.username }));
     } catch (error) {
-      console.error('[Discord] Error getting voice members:', error);
+      logger.error('Error getting voice members', { error });
       // Return basic info for current user as fallback
       if (this.user) {
         return [{ id: this.user.id, username: this.user.username }];
@@ -722,7 +732,7 @@ export class UserDiscordClient extends EventEmitter {
           guilds = guildsList.length;
         }
       } catch (error) {
-        console.error('[Status Error]', error);
+        logger.error('Status check error', { error });
       }
     }
 

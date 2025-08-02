@@ -1,6 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
+import { loggers } from './logger.js';
+
+const logger = loggers.stt;
 
 export class ElevenLabsSTT {
   private apiKey: string;
@@ -33,12 +36,12 @@ export class ElevenLabsSTT {
     }>;
   }> {
     try {
-      console.error('[ElevenLabs STT] Starting transcription...');
+      logger.debug('Starting transcription');
       
       // Convert PCM audio buffer to WAV format for API
       const wavBuffer = await this.convertPCMToWAV(audioBuffer);
       
-      console.error('[ElevenLabs STT] Converted to WAV format, size:', wavBuffer.length);
+      logger.debug('Converted to WAV format', { size: wavBuffer.length });
       
       // Prepare form data
       const formData = new FormData();
@@ -75,16 +78,16 @@ export class ElevenLabsSTT {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[ElevenLabs STT] API Error:', response.status, errorText);
+        logger.error('API Error', { status: response.status, error: errorText });
         throw new Error(`ElevenLabs STT API error: ${response.status} - ${errorText}`);
       }
 
       const result = await response.json();
-      console.error('[ElevenLabs STT] Transcription completed successfully');
+      logger.debug('Transcription completed successfully');
       
       return result;
     } catch (error) {
-      console.error('[ElevenLabs STT] Error:', error);
+      logger.error('Transcription error', { error });
       throw error;
     }
   }
@@ -150,7 +153,7 @@ export class ElevenLabsSTT {
       
       return result.text;
     } catch (error) {
-      console.error('[ElevenLabs STT] Buffer transcription error:', error);
+      logger.error('Buffer transcription error', { error });
       return null;
     }
   }

@@ -2,6 +2,9 @@ import { Worker, isMainThread, parentPort, workerData } from 'worker_threads';
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import nacl from 'tweetnacl';
+import { loggers } from './logger.js';
+
+const logger = loggers.worker;
 
 const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
@@ -146,7 +149,7 @@ export class AudioEncodingWorker {
         case 'error':
           const errorCallback = this.pendingFrames.get(message.id);
           if (errorCallback) {
-            console.error('[AudioEncodingWorker] Error:', message.error);
+            logger.error('AudioEncodingWorker error', { error: message.error });
             this.pendingFrames.delete(message.id);
           }
           break;

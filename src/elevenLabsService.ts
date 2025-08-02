@@ -1,5 +1,8 @@
 import { ElevenLabsClient } from '@elevenlabs/elevenlabs-js';
 import { Readable } from 'stream';
+import { loggers } from './logger.js';
+
+const logger = loggers.tts;
 
 export class ElevenLabsService {
   private client: ElevenLabsClient;
@@ -12,7 +15,7 @@ export class ElevenLabsService {
 
   async generateSpeech(text: string): Promise<Buffer> {
     try {
-      console.error('[ElevenLabs] Generating speech for text:', text);
+      logger.debug('Generating speech for text', { text });
       
       // Generate audio using textToSpeech
       const audioStream = await this.client.textToSpeech.convert(this.voiceId, {
@@ -41,16 +44,16 @@ export class ElevenLabsService {
       }
       
       const audioBuffer = Buffer.concat(chunks.map(chunk => Buffer.from(chunk)));
-      console.error('[ElevenLabs] Generated audio buffer size:', audioBuffer.length);
+      logger.debug('Generated audio buffer', { size: audioBuffer.length });
       return audioBuffer;
     } catch (error) {
-      console.error('[ElevenLabs] Error generating speech:', error);
+      logger.error('Error generating speech', { error });
       throw error;
     }
   }
 
   async streamSpeech(text: string): Promise<ReadableStream<Uint8Array>> {
-    console.error('[ElevenLabs] Streaming speech for text:', text);
+    logger.debug('Streaming speech for text', { text });
     
     const audioStream = await this.client.textToSpeech.convert(this.voiceId, {
       text,

@@ -9,11 +9,11 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import { UserDiscordClient } from './userDiscordClient.js';
-import { LocalVoiceHandler } from './localVoiceHandler.js';
-import { RealtimeTranscriptHandler } from './realtimeTranscriptHandler.js';
-import { OpusStreamHandler } from './opusStreamHandler.js';
 import { ElevenLabsService } from './elevenLabsService.js';
 import { DiscordLogin } from './discordLogin.js';
+import { loggers } from './logger.js';
+
+const logger = loggers.mcp;
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
@@ -36,7 +36,7 @@ async function generateLocalTTS(text: string): Promise<Buffer> {
   );
   
   if (stderr && !stderr.includes('Using device:')) {
-    console.error('[TTS Error]', stderr);
+    logger.error('TTS generation error', { stderr });
   }
   
   // Read the generated audio file
@@ -50,8 +50,6 @@ async function generateLocalTTS(text: string): Promise<Buffer> {
 
 // Initialize clients
 const discordClient = new UserDiscordClient();
-const voiceHandler = new LocalVoiceHandler();
-const transcriptHandler = new RealtimeTranscriptHandler();
 
 // Initialize ElevenLabs if credentials are available
 let elevenLabs: ElevenLabsService | null = null;
@@ -60,9 +58,9 @@ if (process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_VOICE_ID) {
     process.env.ELEVENLABS_API_KEY,
     process.env.ELEVENLABS_VOICE_ID
   );
-  console.error('[Discord MCP] ElevenLabs initialized with voice ID:', process.env.ELEVENLABS_VOICE_ID);
+  logger.info('ElevenLabs initialized', { voiceId: process.env.ELEVENLABS_VOICE_ID });
 } else {
-  console.error('[Discord MCP] ElevenLabs not configured - TTS will use local fallback');
+  logger.warn('ElevenLabs not configured - TTS will use local fallback');
 }
 
 // MCP Server
@@ -273,7 +271,7 @@ const callToolHandler = async (request: any) => {
       case 'discord_login': {
         const { username, password } = args as { username: string; password: string };
         
-        console.error('[Discord MCP] Starting Discord login...');
+        logger.info('Starting Discord login');
         const loginService = new DiscordLogin();
         const result = await loginService.login(username, password);
         
@@ -313,7 +311,7 @@ const callToolHandler = async (request: any) => {
           throw new Error('No Discord cookie provided and no login credentials available');
         }
         
-        console.error('[Discord MCP] Connecting to Discord...');
+        logger.info('Connecting to Discord');
         // Pass the cookie only if we have one, otherwise let connect() load from file
         if (actualCookie) {
           await discordClient.connect(actualCookie);
@@ -328,7 +326,7 @@ const callToolHandler = async (request: any) => {
           }, 30000);
           
           discordClient.once('ready', () => {
-            console.error('[Discord MCP] Ready event received, connection established');
+            logger.info('Ready event received, connection established');
             clearTimeout(timeout);
             // Wait a bit more to ensure token is fully synchronized
             setTimeout(resolve, 2000);
@@ -407,22 +405,22 @@ const callToolHandler = async (request: any) => {
         
         // Automatically start real-time transcription - ENABLED!
         try {
-          console.error('[Discord MCP] Starting voice handler transcription...');
+          logger.info('Starting voice handler transcription');
           
           // Get the voice handler from Discord client
           const voiceHandler = discordClient.getVoiceHandler();
           if (voiceHandler) {
-            console.error('[Discord MCP] Voice handler found, enabling transcription...');
+            logger.info('Voice handler found, enabling transcription');
             voiceHandler.setTranscriptionEnabled(true);
             
             // Listen for transcription events
             voiceHandler.on('transcription', (data: any) => {
-              console.error('[Discord MCP] Transcription received:', data);
+              logger.info('Transcription received', data);
             });
             
-            console.error('[Discord MCP] Transcription enabled and listening!');
+            logger.info('Transcription enabled and listening!');
           } else {
-            console.error('[Discord MCP] No voice handler available yet');
+            logger.warn('No voice handler available yet');
           }
           // Skip transcription - commented out original code
           /*
@@ -442,15 +440,12 @@ const callToolHandler = async (request: any) => {
               const channel = channels.find(ch => ch.id === channelId);
               channelName = channel?.name;
             } catch (error) {
-              console.error('[Discord MCP] Failed to get server/channel names:', error);
+              logger.error('Failed to get server/channel names', { error });
             }
             
             // Get WebRTC handler for audio stream
             const webrtcHandler = discordClient.getVoiceHandler();
             if (webrtcHandler) {
-              // Create opus handler to decode audio
-              const opusHandler = new OpusStreamHandler();
-              
               // Listen for decrypted opus packets from WebRTC handler
               webrtcHandler.on('opusPacket', (data) => {
                 opusHandler.handleOpusPacket(data);
@@ -458,15 +453,15 @@ const callToolHandler = async (request: any) => {
               
               // Listen for transcription events from WebRTC handler
               webrtcHandler.on('transcription', (data) => {
-                console.error(`[Discord MCP] Transcription from ${data.userId}: "${data.text}"`);
+                logger.info('Transcription from user', { userId: data.userId, text: data.text });
                 // You can emit this to other systems or store it
                 const memberInfo = members.find(m => m.id === data.userId) || { username: data.userId };
-                console.error(`[Discord MCP] ${memberInfo.username}: "${data.text}"`);
+                logger.info('User message', { username: memberInfo.username, text: data.text });
               });
               
               // Listen for complete audio segments from opus handler
               opusHandler.on('audioSegment', async (segment) => {
-                console.error(`[Discord MCP] Got audio segment from user ${segment.userId}, duration: ${segment.duration}s`);
+                logger.info('Got audio segment', { userId: segment.userId, duration: segment.duration });
                 
                 // Convert PCM to WAV and transcribe with Whisper
                 try {
@@ -538,7 +533,7 @@ const callToolHandler = async (request: any) => {
                   await fs.unlink(wavPath).catch(() => {});
                   
                   if (text && text.trim()) {
-                    console.error(`[Discord MCP] Transcribed ${segment.userId}: "${text}"`);
+                    logger.info('Transcribed audio', { userId: segment.userId, text });
                     
                     // Add to transcript
                     const activeTranscript = transcriptHandler.getTranscript(actualGuildId);
@@ -554,14 +549,14 @@ const callToolHandler = async (request: any) => {
                   }
                   
                 } catch (error) {
-                  console.error(`[Discord MCP] Failed to transcribe audio for ${segment.userId}:`, error);
+                  logger.error('Failed to transcribe audio', { userId: segment.userId, error });
                 }
               });
               
               // Store opus handler for cleanup
               (webrtcHandler as any).opusHandler = opusHandler;
               
-              console.error('[Discord MCP] Voice reception pipeline ready: RTP -> Decrypt -> Opus Decode -> PCM');
+              logger.info('Voice reception pipeline ready: RTP -> Decrypt -> Opus Decode -> PCM');
               
               // Create transcript file with server and channel names
               const transcriptPath = await transcriptHandler.startTranscription(
@@ -572,13 +567,13 @@ const callToolHandler = async (request: any) => {
                 serverName,
                 channelName
               );
-              console.error('[Discord MCP] Transcript file created:', transcriptPath);
+              logger.info('Transcript file created', { path: transcriptPath });
             } else {
-              console.error('[Discord MCP] WebRTC handler not available for transcription');
+              logger.warn('WebRTC handler not available for transcription');
             }
           */
         } catch (error) {
-          console.error('[Discord MCP] Failed to start real-time transcription:', error);
+          logger.error('Failed to start real-time transcription', { error });
         }
         
         return { 
@@ -592,24 +587,12 @@ const callToolHandler = async (request: any) => {
       case 'discord_leave_voice': {
         const { serverId } = args as { serverId: string };
         
-        // Stop any ongoing real-time transcription
-        if (transcriptHandler.isTranscribing(serverId)) {
-          console.error('[Discord MCP] Stopping real-time transcription...');
-          try {
-            const transcriptPath = transcriptHandler.getTranscriptPath(serverId);
-            await transcriptHandler.stopTranscription(serverId);
-            console.error('[Discord MCP] Real-time transcription stopped. Transcript saved at:', transcriptPath);
-          } catch (error) {
-            console.error('[Discord MCP] Failed to stop transcription:', error);
-          }
-        }
-        
         await discordClient.leaveVoiceChannel(serverId);
         
         return { 
           content: [{ 
             type: 'text', 
-            text: 'Left voice channel and stopped transcription'
+            text: 'Left voice channel'
           }] 
         };
       }
@@ -617,7 +600,7 @@ const callToolHandler = async (request: any) => {
       case 'voice_speak': {
         const { text } = args as { text: string };
         
-        console.error('[Discord MCP] voice_speak called with text:', text);
+        logger.info('voice_speak called', { text });
         
         // Check if we're in a voice channel
         const status = await discordClient.getStatus();
@@ -634,33 +617,33 @@ const callToolHandler = async (request: any) => {
         // Generate audio using ElevenLabs or fallback
         let audioBuffer: Buffer;
         
-        console.error('[Discord MCP] Generating audio...');
+        logger.info('Generating audio');
         
         if (elevenLabs) {
           // Use ElevenLabs
           try {
-            console.error('[Discord MCP] Using ElevenLabs TTS...');
+            logger.info('Using ElevenLabs TTS');
             audioBuffer = await elevenLabs.generateSpeech(text);
-            console.error('[Discord MCP] Generated audio with ElevenLabs, size:', audioBuffer.length);
+            logger.info('Generated audio with ElevenLabs', { size: audioBuffer.length });
           } catch (error) {
-            console.error('[Discord MCP] ElevenLabs failed:', error);
-            console.error('[Discord MCP] Falling back to local TTS...');
+            logger.error('ElevenLabs failed', { error });
+            logger.info('Falling back to local TTS');
             // Fallback to local TTS
             audioBuffer = await generateLocalTTS(text);
-            console.error('[Discord MCP] Generated audio with local TTS, size:', audioBuffer.length);
+            logger.info('Generated audio with local TTS', { size: audioBuffer.length });
           }
         } else {
           // Use local TTS
-          console.error('[Discord MCP] Using local TTS (no ElevenLabs configured)...');
+          logger.info('Using local TTS (no ElevenLabs configured)');
           audioBuffer = await generateLocalTTS(text);
-          console.error('[Discord MCP] Generated audio with local TTS, size:', audioBuffer.length);
+          logger.info('Generated audio with local TTS', { size: audioBuffer.length });
         }
         
         // Play through voice channel
         try {
-          console.error('[Discord MCP] Playing audio in voice channel...');
+          logger.info('Playing audio in voice channel');
           await discordClient.playAudioInVoice(audioBuffer);
-          console.error('[Discord MCP] Audio playback completed successfully');
+          logger.info('Audio playback completed successfully');
           
           return { 
             content: [{ 
@@ -669,8 +652,8 @@ const callToolHandler = async (request: any) => {
             }] 
           };
         } catch (error) {
-          console.error('[Discord MCP] Failed to play audio:', error);
-          console.error('[Discord MCP] Error details:', error instanceof Error ? error.stack : 'No stack trace');
+          logger.error('Failed to play audio', { error });
+          logger.error('Audio playback error details', { stack: error instanceof Error ? error.stack : 'No stack trace' });
           
           // Check if it's a voice connection issue
           if (error instanceof Error && error.message.includes('Not connected to voice channel')) {
@@ -684,8 +667,10 @@ const callToolHandler = async (request: any) => {
       case 'discord_start_listening': {
         const { serverId } = args as { serverId: string };
         
-        if (voiceHandler.isRecording(serverId)) {
-          throw new Error('Already recording in this server');
+        // Check if we're in a voice channel
+        const status = await discordClient.getStatus();
+        if (!status.connected) {
+          throw new Error('Not connected to Discord');
         }
         
         // Get voice channel members
@@ -695,7 +680,6 @@ const callToolHandler = async (request: any) => {
         }
         
         const members = await discordClient.getVoiceMembers(serverId, voiceState.channel_id);
-        const memberMap = new Map(members.map(m => [m.id, m.username]));
         
         // Get WebRTC handler
         const webrtcHandler = discordClient.getVoiceHandler();
@@ -703,29 +687,8 @@ const callToolHandler = async (request: any) => {
           throw new Error('WebRTC not initialized - make sure you are connected to a voice channel');
         }
         
-        // Create a connection wrapper that bridges WebRTC to our voice handler
-        const { EventEmitter } = await import('events');
-        const connectionWrapper = {
-          receiver: {
-            speaking: new EventEmitter(),
-            subscribe: (_userId: string) => {
-              // Remote audio streaming not implemented in threaded handler yet
-              console.warn('[Discord] Remote audio streaming not implemented for threaded handler');
-              return null;
-            }
-          }
-        } as any;
-        
-        // Listen for speaking events from WebRTC
-        webrtcHandler.on('userSpeaking', ({ userId, stream }) => {
-          connectionWrapper.receiver.speaking.emit('start', userId);
-          // When stream ends, emit stop
-          stream.getTracks()[0]?.addEventListener('ended', () => {
-            connectionWrapper.receiver.speaking.emit('stop', userId);
-          });
-        });
-        
-        await voiceHandler.startRecording(connectionWrapper, serverId, memberMap);
+        // Enable transcription on the voice handler
+        webrtcHandler.setTranscriptionEnabled(true);
         
         return { 
           content: [{ 
@@ -738,16 +701,19 @@ const callToolHandler = async (request: any) => {
       case 'discord_stop_listening': {
         const { serverId } = args as { serverId: string };
         
-        if (!voiceHandler.isRecording(serverId)) {
-          throw new Error('Not recording in this server');
+        // Get WebRTC handler
+        const webrtcHandler = discordClient.getVoiceHandler();
+        if (!webrtcHandler) {
+          throw new Error('Not in a voice channel');
         }
         
-        const { transcript } = await voiceHandler.stopRecording(serverId);
+        // Disable transcription
+        webrtcHandler.setTranscriptionEnabled(false);
         
         return { 
           content: [{ 
             type: 'text', 
-            text: `Stopped listening.\n\n${transcript}` 
+            text: `Stopped listening` 
           }] 
         };
       }
@@ -776,36 +742,21 @@ const callToolHandler = async (request: any) => {
 
       case 'discord_get_partial_transcript': {
         const { serverId } = args as { serverId: string };
-        const transcript = voiceHandler.getPartialTranscript(serverId);
         
         return { 
           content: [{ 
             type: 'text', 
-            text: transcript || 'No recording in progress' 
+            text: 'Partial transcript not available - use voice_get_transcript instead' 
           }] 
         };
       }
 
       case 'voice_get_transcript': {
-        // Get and clear transcript from active transcription
-        const guilds = await discordClient.getGuilds();
-        
-        for (const guild of guilds) {
-          if (transcriptHandler.isTranscribing(guild.id)) {
-            const transcript = await transcriptHandler.getAndClearTranscript(guild.id);
-            return { 
-              content: [{ 
-                type: 'text', 
-                text: transcript || 'No transcript available' 
-              }] 
-            };
-          }
-        }
-        
+        // This will be implemented when transcription events are properly handled
         return { 
           content: [{ 
             type: 'text', 
-            text: 'Not currently transcribing in any voice channel' 
+            text: 'Transcription feature is being debugged' 
           }] 
         };
       }
@@ -831,14 +782,14 @@ server.setRequestHandler(CallToolRequestSchema, callToolHandler);
 
 // Start the server
 async function main() {
-  console.error('[Discord MCP] Starting server...');
+  logger.info('Starting server');
   
   // Check if we should use SSE or stdio
   const useSSE = process.argv.includes('--sse') || process.env.MCP_TRANSPORT === 'sse';
   const port = parseInt(process.env.MCP_PORT || '3001');
   
   if (useSSE) {
-    console.error(`[Discord MCP] Starting HTTP server on port ${port}...`);
+    logger.info(`Starting HTTP server on port ${port}`);
     
     // Create HTTP server that proxies to MCP server
     const httpServer = http.createServer(async (req, res) => {
@@ -871,14 +822,14 @@ async function main() {
             request = JSON.parse(body);
             requestId = request.id;
           } catch (parseError) {
-            console.error('[HTTP] JSON Parse Error:', parseError);
-            console.error('[HTTP] Raw body:', body);
+            logger.error('JSON Parse Error', { parseError });
+            logger.debug('Raw body', { body });
             throw new Error(`Invalid JSON: ${parseError instanceof Error ? parseError.message : 'Unknown parse error'}`);
           }
           
-          console.error(`[HTTP] Request ${requestId}: ${request.method}`);
+          logger.debug(`HTTP Request ${requestId}: ${request.method}`);
           if (request.params) {
-            console.error('[HTTP] Parameters:', JSON.stringify(request.params, null, 2));
+            logger.debug('Request parameters', request.params);
           }
           
           let result;
@@ -890,7 +841,7 @@ async function main() {
             if (!request.params?.name) {
               throw new Error('Missing required parameter: name');
             }
-            console.error(`[HTTP] Calling tool: ${request.params.name}`);
+            logger.debug(`Calling tool: ${request.params.name}`);
             result = await callToolHandler({ params: request.params });
           } else {
             throw new Error(`Unknown method: ${request.method}`);
@@ -902,14 +853,14 @@ async function main() {
             result
           };
           
-          console.error(`[HTTP] Success response for request ${requestId}`);
+          logger.debug(`Success response for request ${requestId}`);
           res.setHeader('Content-Type', 'application/json');
           res.writeHead(200);
           res.end(JSON.stringify(response, null, 2));
           
         } catch (error) {
-          console.error(`[HTTP] Error handling request ${requestId}:`, error);
-          console.error('[HTTP] Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
+          logger.error(`Error handling request ${requestId}`, { error });
+          logger.error('Stack trace', { stack: error instanceof Error ? error.stack : 'No stack trace' });
           
           const errorResponse = {
             jsonrpc: '2.0',
@@ -932,19 +883,19 @@ async function main() {
     });
     
     httpServer.listen(port, () => {
-      console.error(`[Discord MCP] HTTP server started on http://localhost:${port}`);
-      console.error(`[Discord MCP] Test tools list: curl -X POST http://localhost:${port}/message -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'`);
-      console.error(`[Discord MCP] Test connect: curl -X POST http://localhost:${port}/message -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"discord_connect","arguments":{}}}'`);
+      logger.info(`HTTP server started on http://localhost:${port}`);
+      logger.info(`Test tools list: curl -X POST http://localhost:${port}/message -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'`);
+      logger.info(`Test connect: curl -X POST http://localhost:${port}/message -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"discord_connect","arguments":{}}}'`);
     });
   } else {
-    console.error('[Discord MCP] Starting stdio server...');
+    logger.info('Starting stdio server');
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error('[Discord MCP] Stdio server started successfully');
+    logger.info('Stdio server started successfully');
   }
 }
 
 main().catch((error) => {
-  console.error('Fatal error:', error);
+  logger.fatal('Fatal error', { error });
   process.exit(1);
 });

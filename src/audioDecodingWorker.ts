@@ -2,6 +2,9 @@ import { Worker, isMainThread, parentPort, workerData } from 'worker_threads';
 import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import nacl from 'tweetnacl';
+import { loggers } from './logger.js';
+
+const logger = loggers.worker;
 
 const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
@@ -63,15 +66,15 @@ if (!isMainThread && parentPort) {
         try {
           const nodeOpus = require('node-opus');
           opusDecoder = new nodeOpus.OpusDecoder(48000, 2);
-          console.error('[AudioDecodingWorker] Using node-opus decoder');
+          logger.debug('Using node-opus decoder');
         } catch (nodeOpusError) {
           // Fallback to @discordjs/opus
           try {
             const discordOpus = require('@discordjs/opus');
             opusDecoder = new discordOpus.OpusEncoder(48000, 2); // Has decode method
-            console.error('[AudioDecodingWorker] Using @discordjs/opus decoder');
+            logger.debug('Using @discordjs/opus decoder');
           } catch (discordOpusError) {
-            console.error('[AudioDecodingWorker] Failed to initialize any opus decoder:', nodeOpusError, discordOpusError);
+            logger.error('Failed to initialize any opus decoder', { nodeOpusError, discordOpusError });
             throw new Error('No opus decoder available');
           }
         }
@@ -146,7 +149,7 @@ if (!isMainThread && parentPort) {
             const decoded = opusDecoder.decode(cleanOpusData);
             pcmData = Buffer.from(decoded);
           } catch (decodeError) {
-            console.error('[AudioDecodingWorker] Opus decode failed:', decodeError);
+            logger.error('Opus decode failed', { error: decodeError });
             // Generate silence frame for failed decodes
             pcmData = Buffer.alloc(960 * 2 * 2); // 20ms of silence at 48kHz stereo 16-bit
           }
@@ -160,7 +163,7 @@ if (!isMainThread && parentPort) {
           
           parentPort!.postMessage({ type: 'decoded', frame: result });
         } catch (error) {
-          console.error('[AudioDecodingWorker] Frame decode error:', error);
+          logger.error('Frame decode error', { error });
           parentPort!.postMessage({ 
             type: 'error', 
             id: frame.id, 
@@ -199,7 +202,7 @@ export class AudioDecodingWorker {
           break;
           
         case 'error':
-          console.error('[AudioDecodingWorker] Error:', message.error);
+          logger.error('AudioDecodingWorker error', { error: message.error });
           const errorCallback = this.pendingFrames.get(message.id);
           if (errorCallback) {
             this.pendingFrames.delete(message.id);
