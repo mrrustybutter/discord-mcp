@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { loggers } from './logger.js';
+import FormData from 'form-data';
 
 const logger = loggers.stt;
 
@@ -46,9 +47,11 @@ export class ElevenLabsSTT {
       // Prepare form data
       const formData = new FormData();
       
-      // Create a blob from the WAV buffer
-      const audioBlob = new Blob([new Uint8Array(wavBuffer)], { type: 'audio/wav' });
-      formData.append('audio', audioBlob, 'audio.wav');
+      // Append the WAV buffer directly
+      formData.append('audio', wavBuffer, {
+        filename: 'audio.wav',
+        contentType: 'audio/wav'
+      });
       
       // Add optional parameters
       if (options.language) {
@@ -72,13 +75,19 @@ export class ElevenLabsSTT {
         method: 'POST',
         headers: {
           'xi-api-key': this.apiKey,
+          ...formData.getHeaders()
         },
-        body: formData,
+        body: formData as any,
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        logger.error('API Error', { status: response.status, error: errorText });
+        logger.error('API Error', { 
+          status: response.status, 
+          error: errorText,
+          apiKey: this.apiKey.substring(0, 10) + '...',
+          audioSize: wavBuffer.length
+        });
         throw new Error(`ElevenLabs STT API error: ${response.status} - ${errorText}`);
       }
 

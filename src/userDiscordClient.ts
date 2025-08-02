@@ -163,6 +163,7 @@ export class UserDiscordClient extends EventEmitter {
       throw new Error('No Discord cookie available - set DISCORD_USER_COOKIE or provide login credentials');
     }
     // First, get gateway info
+    logger.info('Fetching gateway info...');
     const gatewayResponse = await fetch('https://discord.com/api/v10/gateway', {
       headers: this.getHeaders()
     });
@@ -203,6 +204,19 @@ export class UserDiscordClient extends EventEmitter {
 
   private handleMessage(data: WebSocket.Data): void {
     const message = JSON.parse(data.toString());
+    
+    // Debug log ALL messages with more detail
+    const messageInfo = { 
+      op: message.op, 
+      t: message.t || 'NO_EVENT_TYPE',
+      s: message.s,
+      hasData: !!message.d,
+      dataKeys: message.d ? Object.keys(message.d).slice(0, 10) : [],
+      // Log full data for voice-related events
+      fullData: (message.t && message.t.includes('VOICE')) ? message.d : undefined
+    };
+    
+    logger.info(`🔍 WebSocket message: op=${message.op}, t=${message.t || 'NONE'}`, messageInfo);
     
     if (message.s) this.sequence = message.s;
 
@@ -316,11 +330,19 @@ export class UserDiscordClient extends EventEmitter {
           user_settings_version: -1,
           private_channels_version: "0",
           api_code_version: 0
-        }
+        },
+        // Add intents for voice events
+        intents: 3276799, // All intents including GUILD_VOICE_STATES
+        // Enable guild subscriptions for user accounts
+        guild_subscriptions: true
       }
     };
 
-    logger.info('Sending identify with token');
+    logger.info('Sending identify with token and intents', { 
+      hasIntents: !!payload.d.intents,
+      intentsValue: payload.d.intents,
+      capabilities: payload.d.capabilities
+    });
     this.ws?.send(JSON.stringify(payload));
   }
 
@@ -565,8 +587,25 @@ export class UserDiscordClient extends EventEmitter {
     
     logger.info('Sending voice state update', { guildId, channelId });
     logger.debug('WebSocket state', { readyState: this.ws.readyState });
+    
+    // First, subscribe to the guild to receive voice events (user accounts need this)
+    const guildSubscribePayload = {
+      op: 14, // GUILD_SUBSCRIBE
+      d: {
+        guild_id: guildId,
+        typing: true,
+        activities: true,
+        threads: true,
+        channels: {
+          [channelId]: [[0, 99]] // Subscribe to voice channel members
+        }
+      }
+    };
+    
+    logger.info('Sending guild subscribe for voice events');
+    this.ws.send(JSON.stringify(guildSubscribePayload));
 
-    // Send voice state update
+    // Send voice state update - match what Discord client sends
     const voiceStatePayload = {
       op: 4,
       d: {
@@ -574,8 +613,10 @@ export class UserDiscordClient extends EventEmitter {
         channel_id: channelId,
         self_mute: false,
         self_deaf: false,
-        self_video: false
-        // Removed flags entirely - let Discord use defaults
+        self_video: false,
+        // Add additional fields that Discord client sends
+        preferred_region: null,
+        flags: 0
       }
     };
     
@@ -706,7 +747,7 @@ export class UserDiscordClient extends EventEmitter {
     }
   }
 
-  async getStatus(): Promise<{ connected: boolean; user: any | null; guilds: number }> {
+  async getStatus(): Promise<{ connected: boolean; user: any | null; guilds: number; voice: any | null }> {
     const connected = this.ws?.readyState === WebSocket.OPEN;
     let user = this.user || null;  // Use stored user data
     let guilds = 0;
@@ -736,7 +777,31 @@ export class UserDiscordClient extends EventEmitter {
       }
     }
 
-    return { connected, user, guilds };
+    // Get current voice connection info
+    let voiceInfo = null;
+    if (this.webrtcHandler) {
+      // Find the guild ID for the current voice connection
+      let currentGuildId = null;
+      let currentChannelId = null;
+      
+      // Check voice states to find where we're connected
+      for (const [guildId, voiceState] of this.voiceStates.entries()) {
+        if (voiceState.channel_id) {
+          currentGuildId = guildId;
+          currentChannelId = voiceState.channel_id;
+          break;
+        }
+      }
+      
+      voiceInfo = {
+        connected: true,
+        guildId: currentGuildId,
+        channelId: currentChannelId,
+        hasHandler: true
+      };
+    }
+
+    return { connected, user, guilds, voice: voiceInfo };
   }
 
   async playAudioInVoice(audioBuffer: Buffer): Promise<void> {
