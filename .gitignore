@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Logs
+*.log
+discord-mcp.pid
+voice-debug.log
+
+# Environment files
+.env
+.env.local
+
+# Cookies
+discord_cookies.json
+
+# Temp files
+*.tmp
+*.bak
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

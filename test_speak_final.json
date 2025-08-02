@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "voice_speak",
+    "arguments": {
+      "text": "Testing final audio improvements with 128kbps bitrate, forward error correction, and optimized Opus encoding. This should sound crystal clear now!"
+    }
+  }
+}

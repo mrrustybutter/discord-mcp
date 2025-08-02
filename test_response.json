@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Found 1 servers:\n[\n  {\n    \"id\": \"1400962207902204004\",\n    \"name\": \"RustyButter\",\n    \"icon\": null,\n    \"banner\": null,\n    \"owner\": true,\n    \"permissions\": \"4503599627370495\",\n    \"features\": []\n  }\n]"
+      }
+    ]
+  }
+}

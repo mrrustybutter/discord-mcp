@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": 11,
+  "method": "tools/call",
+  "params": {
+    "name": "voice_speak",
+    "arguments": {
+      "text": "Audio test two. This is a longer message to test sustained audio quality over multiple frames. We want to check if there are any glitches, pops, clicks, or robotic artifacts in the voice output. The audio should flow smoothly from beginning to end."
+    }
+  }
+}
