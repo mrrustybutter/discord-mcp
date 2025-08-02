@@ -78,5 +78,9 @@ export const loggers = {
   worker: createLogger('worker'),
   stt: createLogger('stt'),
   tts: createLogger('tts'),
-  mcp: createLogger('mcp')
+  mcp: createLogger('mcp'),
+  transcript: createLogger('transcript'),
+  auth: createLogger('auth'),
+  cookie: createLogger('cookie'),
+  udp: createLogger('udp')
 };

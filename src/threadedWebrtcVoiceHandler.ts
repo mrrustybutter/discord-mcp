@@ -39,6 +39,7 @@ export class ThreadedWebRTCVoiceHandler extends EventEmitter {
   private sequence = 0;
   private timestamp = 0;
   private speaking = false;
+  private ssrcUserMap = new Map<number, string>(); // Map SSRC to Discord user IDs
   
   // Frame queue for smooth sending with jitter buffer
   private sendQueue: Buffer[] = [];
@@ -106,7 +107,12 @@ export class ThreadedWebRTCVoiceHandler extends EventEmitter {
               words: result.words
             });
           } catch (error) {
-            logger.error('Transcription error', { error });
+            logger.error('Transcription error in voice handler', { 
+              error: error instanceof Error ? error.message : String(error),
+              userId: data.userId,
+              audioSize: data.audioBuffer.length,
+              component: 'voice-handler'
+            });
           }
         }
       });
@@ -154,6 +160,13 @@ export class ThreadedWebRTCVoiceHandler extends EventEmitter {
           logger.debug('UDP packet received', { size: packet.length });
           if (this.decodingWorker) {
             try {
+              // Extract SSRC from RTP packet (bytes 8-11)
+              let packetSsrc: number | undefined;
+              if (packet.length >= 12) {
+                packetSsrc = packet.readUInt32BE(8);
+                logger.debug('Extracted SSRC from packet', { ssrc: packetSsrc });
+              }
+              
               logger.debug('Sending packet to decoding worker');
               const decoded = await this.decodingWorker.decodeFrame(packet);
               logger.debug('Decoded frame', { pcmSize: decoded.pcmData.length, sequence: decoded.sequence });
@@ -161,9 +174,16 @@ export class ThreadedWebRTCVoiceHandler extends EventEmitter {
               
               // Add to transcription buffer if enabled
               if (this.transcriptionEnabled && this.audioBufferManager && decoded.pcmData.length > 0) {
-                // Use sequence number as rough user ID for now (Discord provides SSRC mapping)
-                const userId = `user_${decoded.sequence % 1000}`; // Simplified user identification
-                logger.debug('Adding audio chunk to buffer', { userId });
+                // Try to get real user ID from SSRC mapping
+                let userId = `user_${decoded.sequence % 1000}`; // Fallback to fake ID
+                if (packetSsrc && this.ssrcUserMap.has(packetSsrc)) {
+                  userId = this.ssrcUserMap.get(packetSsrc)!;
+                  logger.debug('Using real user ID from SSRC mapping', { ssrc: packetSsrc, userId });
+                } else {
+                  logger.debug('No SSRC mapping found, using fallback', { ssrc: packetSsrc, userId });
+                }
+                
+                logger.debug('Adding audio chunk to buffer', { userId, ssrc: packetSsrc });
                 this.audioBufferManager.addAudioChunk(userId, decoded.pcmData);
               } else {
                 logger.debug('Skipping transcription', { enabled: this.transcriptionEnabled, hasBufferManager: !!this.audioBufferManager, pcmSize: decoded.pcmData.length });
@@ -204,7 +224,22 @@ export class ThreadedWebRTCVoiceHandler extends EventEmitter {
         break;
         
       case 5: // Speaking
-        // Handle speaking updates
+        // Handle speaking updates - map SSRC to user ID
+        if (message.d && message.d.speaking !== undefined && message.d.ssrc && message.d.user_id) {
+          logger.info('Speaking event received', { 
+            userId: message.d.user_id, 
+            ssrc: message.d.ssrc, 
+            speaking: message.d.speaking 
+          });
+          
+          // Map SSRC to user ID for transcription
+          this.ssrcUserMap.set(message.d.ssrc, message.d.user_id);
+          logger.debug('SSRC mapping updated', { 
+            ssrc: message.d.ssrc, 
+            userId: message.d.user_id,
+            totalMappings: this.ssrcUserMap.size 
+          });
+        }
         break;
     }
   }

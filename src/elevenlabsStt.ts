@@ -47,11 +47,14 @@ export class ElevenLabsSTT {
       // Prepare form data
       const formData = new FormData();
       
-      // Append the WAV buffer directly
-      formData.append('audio', wavBuffer, {
+      // Append the WAV buffer directly - API expects 'file' field
+      formData.append('file', wavBuffer, {
         filename: 'audio.wav',
         contentType: 'audio/wav'
       });
+      
+      // Add required model_id parameter
+      formData.append('model_id', 'scribe_v1');
       
       // Add optional parameters
       if (options.language) {
@@ -70,12 +73,16 @@ export class ElevenLabsSTT {
         formData.append('webhook', options.webhook);
       }
 
+      // Debug: Log the form data headers
+      const formHeaders = formData.getHeaders();
+      logger.debug('FormData headers', { headers: formHeaders });
+      
       // Make API request
       const response = await fetch(`${this.baseUrl}/v1/speech-to-text`, {
         method: 'POST',
         headers: {
           'xi-api-key': this.apiKey,
-          ...formData.getHeaders()
+          ...formHeaders
         },
         body: formData as any,
       });
@@ -84,9 +91,12 @@ export class ElevenLabsSTT {
         const errorText = await response.text();
         logger.error('API Error', { 
           status: response.status, 
+          statusText: response.statusText,
+          headers: response.headers,
           error: errorText,
           apiKey: this.apiKey.substring(0, 10) + '...',
-          audioSize: wavBuffer.length
+          audioSize: wavBuffer.length,
+          endpoint: `${this.baseUrl}/v1/speech-to-text`
         });
         throw new Error(`ElevenLabs STT API error: ${response.status} - ${errorText}`);
       }
@@ -96,7 +106,11 @@ export class ElevenLabsSTT {
       
       return result;
     } catch (error) {
-      logger.error('Transcription error', { error });
+      logger.error('Transcription error', { 
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        component: 'stt'
+      });
       throw error;
     }
   }

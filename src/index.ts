@@ -12,6 +12,7 @@ import { UserDiscordClient } from './userDiscordClient.js';
 import { ElevenLabsService } from './elevenLabsService.js';
 import { DiscordLogin } from './discordLogin.js';
 import { loggers } from './logger.js';
+import { transcriptStore } from './transcriptStore.js';
 
 const logger = loggers.mcp;
 import { exec } from 'child_process';
@@ -407,6 +408,9 @@ const callToolHandler = async (request: any) => {
         try {
           logger.info('Starting voice handler transcription');
           
+          // Initialize transcript store
+          await transcriptStore.initialize();
+          
           // Get the voice handler from Discord client
           const voiceHandler = discordClient.getVoiceHandler();
           if (voiceHandler) {
@@ -414,8 +418,17 @@ const callToolHandler = async (request: any) => {
             voiceHandler.setTranscriptionEnabled(true);
             
             // Listen for transcription events
-            voiceHandler.on('transcription', (data: any) => {
+            voiceHandler.on('transcription', async (data: any) => {
               logger.info('Transcription received', data);
+              
+              // Save to transcript store
+              await transcriptStore.addTranscription({
+                userId: data.userId,
+                text: data.text,
+                timestamp: Date.now(),
+                guildId: args.guildId || args.serverId,
+                channelId: args.channelId
+              });
             });
             
             logger.info('Transcription enabled and listening!');
@@ -752,11 +765,27 @@ const callToolHandler = async (request: any) => {
       }
 
       case 'voice_get_transcript': {
-        // This will be implemented when transcription events are properly handled
+        const { limit = 10 } = args as { limit?: number };
+        
+        const transcriptions = transcriptStore.getLatestTranscriptions(limit);
+        
+        if (transcriptions.length === 0) {
+          return { 
+            content: [{ 
+              type: 'text', 
+              text: 'No transcriptions available yet' 
+            }] 
+          };
+        }
+        
+        const formattedTranscripts = transcriptions.map(t => 
+          `[${new Date(t.timestamp).toLocaleTimeString()}] ${t.username || t.userId}: ${t.text}`
+        ).join('\n');
+        
         return { 
           content: [{ 
             type: 'text', 
-            text: 'Transcription feature is being debugged' 
+            text: `Recent transcriptions:\n${formattedTranscripts}` 
           }] 
         };
       }
