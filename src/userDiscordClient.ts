@@ -45,6 +45,7 @@ export class UserDiscordClient extends EventEmitter {
   private superProperties: SuperProperties;
   private cookie: string;
   private voiceStates = new Map<string, VoiceState>();
+  private memberCache = new Map<string, { id: string; username: string; displayName?: string }>();
   private voiceWebsocket?: WebSocket;
   private webrtcHandler?: ThreadedWebRTCVoiceHandler;
   private user?: any;
@@ -414,8 +415,43 @@ export class UserDiscordClient extends EventEmitter {
     }
   }
 
-  private handleVoiceStateUpdate(data: VoiceState): void {
-    this.voiceStates.set(data.user_id, data);
+  private handleVoiceStateUpdate(data: any): void {
+    logger.info('Full VOICE_STATE_UPDATE data', { 
+      fullData: JSON.stringify(data, null, 2),
+      hasUser: !!data.user,
+      hasMember: !!data.member,
+      userId: data.user_id,
+      channelId: data.channel_id,
+      guildId: data.guild_id
+    });
+    
+    // Store the voice state with additional member data if available
+    const voiceState: VoiceState = {
+      guild_id: data.guild_id,
+      channel_id: data.channel_id,
+      user_id: data.user_id,
+      session_id: data.session_id,
+      deaf: data.deaf,
+      mute: data.mute,
+      self_deaf: data.self_deaf,
+      self_mute: data.self_mute,
+      suppress: data.suppress
+    };
+    
+    // Store voice state
+    this.voiceStates.set(data.user_id, voiceState);
+    
+    // If member data is included, cache it
+    if (data.member && data.member.user) {
+      const memberInfo = {
+        id: data.user_id,
+        username: data.member.user.username,
+        displayName: data.member.nick || data.member.user.username
+      };
+      this.memberCache.set(data.user_id, memberInfo);
+      logger.info('Member data cached', memberInfo);
+    }
+    
     this.emit('voiceStateUpdate', data);
   }
 
@@ -718,33 +754,45 @@ export class UserDiscordClient extends EventEmitter {
   }
 
   async getVoiceMembers(guildId: string, channelId: string): Promise<{ id: string; username: string }[]> {
-    try {
-      const response = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members?limit=1000`, {
-        headers: this.getHeaders(true)
+    logger.info('Getting voice members', { guildId, channelId });
+    logger.debug('Current voice states map size', { size: this.voiceStates.size });
+    
+    const members: { id: string; username: string }[] = [];
+    
+    // Iterate through all voice states to find members in this guild/channel
+    for (const [userId, voiceState] of this.voiceStates) {
+      logger.debug('Checking voice state', { 
+        userId, 
+        stateGuildId: voiceState.guild_id, 
+        stateChannelId: voiceState.channel_id,
+        targetGuildId: guildId,
+        targetChannelId: channelId
       });
-
-      if (!response.ok) {
-        logger.warn('Failed to get members, using fallback', { status: response.status });
-        // Return basic info for current user as fallback
-        if (this.user) {
-          return [{ id: this.user.id, username: this.user.username }];
-        }
-        return [];
+      
+      if (voiceState.guild_id === guildId && voiceState.channel_id === channelId) {
+        // Get cached member data if available
+        const cachedMember = this.memberCache.get(userId);
+        const username = cachedMember ? cachedMember.username : `User_${userId}`;
+        
+        members.push({ 
+          id: userId, 
+          username: username
+        });
+        logger.info('Found voice member', { userId, username, channelId, hasCachedData: !!cachedMember });
       }
-
-      const members = await response.json() as any[];
-      // Filter members in the voice channel
-      return members
-        .filter(m => m.voice?.channel_id === channelId)
-        .map(m => ({ id: m.user.id, username: m.user.username }));
-    } catch (error) {
-      logger.error('Error getting voice members', { error });
-      // Return basic info for current user as fallback
-      if (this.user) {
-        return [{ id: this.user.id, username: this.user.username }];
-      }
-      return [];
     }
+    
+    // Always include ourselves if we're in the channel
+    if (this.user && members.length === 0) {
+      // Check if we're in this channel
+      const ourVoiceState = this.voiceStates.get(this.user.id);
+      if (ourVoiceState && ourVoiceState.guild_id === guildId && ourVoiceState.channel_id === channelId) {
+        members.push({ id: this.user.id, username: this.user.username });
+      }
+    }
+    
+    logger.info('Voice members found', { count: members.length, members });
+    return members;
   }
 
   async getStatus(): Promise<{ connected: boolean; user: any | null; guilds: number; voice: any | null }> {

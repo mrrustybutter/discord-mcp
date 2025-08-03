@@ -20,8 +20,8 @@ const MCP_COMMANDS = {
     params: {
       name: 'discord_join_voice',
       arguments: {
-        serverId: 'YOUR_SERVER_ID', // Replace with your server ID
-        channelId: 'YOUR_CHANNEL_ID' // Replace with your voice channel ID
+        serverId: '1234146034394304574', // Rusty Butter server
+        channelId: '1234146034394304577' // General voice channel
       }
     }
   },
