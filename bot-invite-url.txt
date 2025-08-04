@@ -1,0 +1,31 @@
+Discord Bot Invite URL for RustyButter Bot
+
+Client ID: 1401733716614840320
+
+Permissions Selected:
+- View Channels
+- Send Messages  
+- Embed Links
+- Attach Files
+- Read Message History
+- Use External Emojis
+- Add Reactions
+- Connect (voice)
+- Speak
+- Video
+- Use Voice Activity
+- Manage Messages
+- Manage Channels
+- Manage Roles
+- Kick Members
+- Ban Members
+- Use Slash Commands
+
+The invite URL has been copied to clipboard from the Discord Developer Portal.
+To add the bot to a server:
+1. Navigate to the invite URL
+2. Select the server to add the bot to
+3. Confirm the permissions
+4. Complete any verification required
+
+Note: The server owner or someone with "Manage Server" permissions must authorize the bot.

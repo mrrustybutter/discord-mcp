@@ -1,130 +1,147 @@
-# Discord MCP (Model Context Protocol) Server
+# Discord Bot MCP
 
-A Discord integration for Rusty Butter that provides voice channel support, real-time speech-to-text transcription, and text-to-speech capabilities through the Model Context Protocol.
+A Model Context Protocol (MCP) server that provides Discord bot functionality with voice transcription (using Google Gemini) and text-to-speech (using ElevenLabs).
 
 ## Features
 
-- 🎙️ **Voice Channel Support**: Join and leave Discord voice channels programmatically
-- 🗣️ **Text-to-Speech**: Generate speech using ElevenLabs TTS and play in voice channels
-- 👂 **Speech-to-Text**: Real-time transcription of voice channel audio using ElevenLabs
-- 💬 **Text Chat**: Send and read messages in Discord channels
-- 🔐 **Authentication**: Login with username/password or use saved cookies
-- 🧵 **Multi-threaded**: Uses worker threads for audio encoding/decoding
-
-## Architecture
-
-The Discord MCP server uses a multi-threaded architecture for optimal performance:
-
-- **Main Thread**: Handles Discord WebSocket connection, HTTP server, and UDP socket
-- **Encoding Worker**: Encodes PCM audio to Opus for transmission
-- **Decoding Worker**: Decodes received Opus audio to PCM with xsalsa20_poly1305_lite encryption
-- **Voice Handler**: Manages WebRTC connection, audio pipeline, and transcription
-
-## Recent Fixes
-
-- **Voice Decryption**: Fixed xsalsa20_poly1305_lite nonce construction for proper audio decryption
-- **User Identification**: Implemented SSRC to Discord user ID mapping for accurate transcription attribution
-- **Audio Buffering**: Enhanced audio buffer management for reliable speech-to-text processing
-- **ElevenLabs STT**: Fixed API integration with correct field names and model parameters
-
-See [VOICE_DECRYPTION_FIX.md](./VOICE_DECRYPTION_FIX.md) for technical details.
+- 🤖 Full Discord bot functionality through MCP
+- 🎤 Voice channel transcription using Google Gemini
+- 🔊 Text-to-speech in voice channels using ElevenLabs
+- 💬 Text channel messaging
+- 📝 Transcript logging
+- 🔄 Real-time voice activity detection
 
 ## Prerequisites
 
-- Node.js 20+ 
-- FFmpeg (for audio processing)
-- ElevenLabs API key (for TTS/STT)
+1. **Discord Bot**
+   - Create a bot on [Discord Developer Portal](https://discord.com/developers/applications)
+   - Enable the following intents:
+     - GUILD_MESSAGES
+     - MESSAGE_CONTENT 
+     - GUILD_VOICE_STATES
+   - Get your bot token and client ID
+
+2. **Google Gemini API**
+   - Get an API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
+
+3. **ElevenLabs API**
+   - Get an API key from [ElevenLabs](https://elevenlabs.io/)
+   - Note your preferred voice ID
 
 ## Installation
 
 ```bash
 npm install
-npm run build
 ```
 
 ## Configuration
 
-Create a `.env` file:
+1. Copy `.env.example` to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
 
-```env
-# Discord credentials (optional - can use cookie instead)
-DISCORD_USERNAME=your_username
-DISCORD_PASSWORD=your_password
-DISCORD_USER_COOKIE=your_cookie_string
+2. Fill in your credentials:
+   ```env
+   # Discord Bot Configuration
+   DISCORD_BOT_TOKEN=your_discord_bot_token_here
+   DISCORD_CLIENT_ID=your_discord_client_id_here
 
-# ElevenLabs (required for TTS/STT)
-ELEVENLABS_API_KEY=your_api_key
-ELEVENLABS_VOICE_ID=your_voice_id
-```
+   # Google Gemini API Configuration
+   GEMINI_API_KEY=your_gemini_api_key_here
+   GEMINI_MODEL=gemini-1.5-flash-002
+
+   # ElevenLabs Configuration  
+   ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
+   ELEVENLABS_VOICE_ID=Au8OOcCmvsCaQpmULvvQ
+   ```
 
 ## Usage
 
-Start the MCP server:
-
+### Development Mode
 ```bash
-npm run start:sse
-```
-
-The server runs on `http://localhost:3001` and provides the following tools:
-
-### Available Tools
-
-- `discord_login` - Login with username/password
-- `discord_connect` - Connect using saved credentials
-- `discord_list_servers` - List all Discord servers
-- `discord_list_channels` - List channels in a server
-- `discord_list_voice_channels` - List voice channels
-- `discord_send_message` - Send a text message
-- `discord_read_messages` - Read recent messages
-- `discord_join_voice` - Join a voice channel
-- `discord_leave_voice` - Leave voice channel
-- `voice_speak` - Speak in voice channel using TTS
-- `discord_get_voice_members` - Get members in voice channel
-- `discord_get_status` - Get connection status
-
-## Development
-
-```bash
-# Run in development mode
 npm run dev
-
-# Watch logs
-npm run logs
-
-# Clean build artifacts
-npm run clean
 ```
 
-## Technical Details
+### Production Mode
+```bash
+npm run build
+npm start
+```
 
-### Voice Connection Flow
+### SSE Mode (for HTTP transport)
+```bash
+npm run dev:sse    # Development
+npm run start:sse  # Production
+```
 
-1. Join voice channel via gateway WebSocket
-2. Receive voice server update with endpoint/token
-3. Connect to voice WebSocket server
-4. Perform IP discovery via UDP
-5. Initialize encryption with secret key
-6. Start sending/receiving audio packets
+## MCP Tools
 
-### Audio Pipeline
+### Bot Management
+- `bot_connect` - Connect the Discord bot
+- `bot_disconnect` - Disconnect the Discord bot
+- `bot_status` - Get bot status and connection info
 
-- **Outgoing**: PCM → Opus encoding → RTP packet → Encryption → UDP transmission
-- **Incoming**: UDP packet → Decryption → Opus decoding → PCM → Transcription
+### Voice Channel
+- `join_voice_channel` - Join a voice channel
+- `leave_voice_channel` - Leave the current voice channel
+- `speak_in_voice` - Use TTS to speak in voice channel
+- `start_transcription` - Start transcribing voice
+- `stop_transcription` - Stop transcribing voice
 
-### Worker Thread Communication
+### Text Channel
+- `send_message` - Send a message to a text channel
 
-Workers use message passing for audio data:
-- Main thread owns UDP socket
-- Workers handle CPU-intensive encoding/decoding
-- Audio buffers passed between threads
+### Guild Management
+- `list_guilds` - List all guilds the bot is in
+- `list_channels` - List all channels in a guild
 
-## Troubleshooting
+## Voice Transcription
 
-- Check `discord-mcp.log` for errors
-- Ensure FFmpeg is installed: `ffmpeg -version`
-- Verify ElevenLabs API key is valid
-- Check network connectivity to Discord
+The bot uses:
+- **Voice Activity Detection (VAD)** to detect when users are speaking
+- **Google Gemini** for accurate speech-to-text transcription
+- **Automatic silence detection** to segment speech
+
+Transcripts are saved to the `./transcripts` directory in JSON format.
+
+## Text-to-Speech
+
+The bot can speak in voice channels using:
+- **ElevenLabs API** for natural-sounding speech
+- **Configurable voice selection**
+- **Streaming audio playback**
+
+## Architecture
+
+```
+discord-bot-mcp/
+├── src/
+│   ├── index.ts          # MCP server entry point
+│   ├── config.ts         # Configuration management
+│   ├── services/
+│   │   ├── discord-bot.ts    # Discord bot service
+│   │   ├── transcription.ts  # Voice transcription service
+│   │   └── elevenlabs.ts     # TTS service
+│   └── utils/
+│       ├── logger.ts          # Logging utility
+│       └── transcript-logger.ts # Transcript file management
+```
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DISCORD_BOT_TOKEN` | Discord bot token | Required |
+| `DISCORD_CLIENT_ID` | Discord application client ID | Required |
+| `GEMINI_API_KEY` | Google Gemini API key | Required |
+| `ELEVENLABS_API_KEY` | ElevenLabs API key | Required |
+| `ELEVENLABS_VOICE_ID` | Voice ID for TTS | `Au8OOcCmvsCaQpmULvvQ` |
+| `GEMINI_MODEL` | Gemini model to use | `gemini-1.5-flash-002` |
+| `LOG_LEVEL` | Logging level | `info` |
+| `ENABLE_TRANSCRIPT_LOGGING` | Save transcripts to files | `true` |
+| `TRANSCRIPT_DIR` | Directory for transcripts | `./transcripts` |
 
 ## License
 
-Part of the Rusty Butter project
+MIT

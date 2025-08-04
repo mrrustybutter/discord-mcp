@@ -4,26 +4,31 @@ node_modules/
 # Build output
 dist/
 
-# Logs
-*.log
-discord-mcp.pid
-voice-debug.log
-
-# Environment files
+# Environment variables
 .env
 .env.local
 
-# Cookies
-discord_cookies.json
+# Logs
+*.log
+logs/
 
-# Temp files
-*.tmp
-*.bak
+# Transcripts
+transcripts/
 
 # OS files
 .DS_Store
 Thumbs.db
 
-# IDE
+# IDE files
 .vscode/
 .idea/
+
+# TypeScript
+*.tsbuildinfo
+
+# Temporary files
+*.tmp
+*.temp
+
+# Server runtime files
+.discord-bot-mcp.pid

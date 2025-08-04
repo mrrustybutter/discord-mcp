@@ -1,54 +1,43 @@
 {
-  "name": "@rusty-butter/discord-mcp",
+  "name": "@rusty-butter/discord-bot-mcp",
   "version": "1.0.0",
-  "description": "Discord MCP server for Rusty Butter with voice channel support",
+  "description": "Discord Bot MCP server with voice transcription (Gemini) and text-to-speech (ElevenLabs)",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
-    "start:sse": "node dist/index.js --sse > discord-mcp.log 2>&1 & echo $! > discord-mcp.pid",
-    "stop": "if [ -f discord-mcp.pid ]; then kill $(cat discord-mcp.pid) && rm discord-mcp.pid; else echo 'No server running'; fi",
-    "restart": "npm run stop && npm run build && npm run start:sse",
-    "logs": "tail -f discord-mcp.log",
-    "logs:pino": "tail -f logs/discord-mcp.log | pino-pretty",
-    "logs:clean": "rm -rf logs/*.log",
     "dev:sse": "tsx src/index.ts --sse",
-    "prod": "NODE_ENV=production npm run start:sse",
-    "clean": "rm -rf dist discord-mcp.log discord-mcp.pid logs/*.log"
+    "start:sse": "node dist/index.js --sse",
+    "server:start": "mkdir -p logs && nohup tsx src/index.ts > logs/discord-bot-mcp.log 2>&1 & echo $! > .discord-bot-mcp.pid",
+    "server:start:sse": "mkdir -p logs && nohup tsx src/index.ts --sse > logs/discord-bot-mcp.log 2>&1 & echo $! > .discord-bot-mcp.pid",
+    "server:stop": "if [ -f .discord-bot-mcp.pid ]; then kill -TERM $(cat .discord-bot-mcp.pid) 2>/dev/null && rm .discord-bot-mcp.pid; else pkill -f 'tsx src/index.ts'; fi",
+    "server:restart": "pnpm run server:stop && sleep 2 && pnpm run server:start",
+    "server:restart:sse": "pnpm run server:stop && sleep 2 && pnpm run server:start:sse",
+    "server:status": "if [ -f .discord-bot-mcp.pid ] && ps -p $(cat .discord-bot-mcp.pid) > /dev/null 2>&1; then echo '✅ Server is running (PID: '$(cat .discord-bot-mcp.pid)')'; else echo '❌ Server is not running'; fi",
+    "server:logs": "tail -f logs/discord-bot-mcp.log",
+    "server:logs:clear": "rm -f logs/*.log",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist logs/*.log .discord-bot-mcp.pid"
   },
   "dependencies": {
     "@discordjs/opus": "^0.9.0",
     "@discordjs/voice": "^0.17.0",
     "@elevenlabs/elevenlabs-js": "^2.7.0",
+    "@google/generative-ai": "^0.21.0",
     "@modelcontextprotocol/sdk": "^1.17.1",
     "discord.js": "^14.16.3",
     "dotenv": "^17.2.1",
-    "fluent-ffmpeg": "^2.1.3",
-    "form-data": "^4.0.4",
-    "node-fetch": "^3.3.2",
-    "node-opus": "^0.3.3",
-    "pino": "^9.7.0",
-    "pino-pretty": "^13.1.1",
     "prism-media": "^1.3.5",
-    "puppeteer": "^22.0.0",
-    "sodium-native": "^4.0.4",
-    "tweetnacl": "^1.0.3",
-    "wrtc": "^0.4.7",
-    "ws": "^8.16.0"
+    "sodium-native": "^4.0.4"
   },
   "devDependencies": {
-    "@types/fluent-ffmpeg": "^2.1.21",
-    "@types/form-data": "^2.2.1",
     "@types/node": "^20.19.9",
-    "@types/puppeteer": "^5.4.7",
-    "@types/webrtc": "^0.0.46",
-    "@types/ws": "^8.5.10",
     "tsx": "^4.7.0",
     "typescript": "^5.5.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   }
 }
