@@ -1,5 +1,5 @@
 import { EndBehaviorType, type VoiceConnection } from '@discordjs/voice';
-import type { TextChannel } from 'discord.js';
+import type { TextChannel, Guild } from 'discord.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import prism from 'prism-media';
 import { config } from '../config.js';
@@ -11,9 +11,11 @@ export class TranscriptionService {
   private genAI: GoogleGenerativeAI;
   private transcriptLogger: TranscriptLogger;
   private isActive = false;
+  private transcripts: Array<{ timestamp: string; speaker: string; text: string }> = [];
 
   constructor(
     private connection: VoiceConnection,
+    private guild: Guild,
     private textChannel?: TextChannel
   ) {
     this.genAI = new GoogleGenerativeAI(config.GEMINI_API_KEY);
@@ -62,13 +64,15 @@ export class TranscriptionService {
       const userStream = new UserAudioStream(
         userId,
         audioStream,
+        this.guild,
         this.textChannel,
         this.genAI,
         this.transcriptLogger,
         () => {
           this.activeStreams.delete(userId);
           activeUsers.delete(userId);
-        }
+        },
+        this.transcripts
       );
 
       this.activeStreams.set(userId, userStream);
@@ -91,6 +95,25 @@ export class TranscriptionService {
 
     logger.info('Stopped voice transcription');
   }
+
+  getTranscript(since?: string): Array<{ timestamp: string; speaker: string; text: string }> {
+    const now = Date.now();
+    
+    // If no 'since' parameter provided, default to last 5 minutes
+    let filterTime: number;
+    if (since) {
+      filterTime = new Date(since).getTime();
+    } else {
+      filterTime = now - (5 * 60 * 1000); // 5 minutes ago
+    }
+
+    return this.transcripts.filter(t => new Date(t.timestamp).getTime() > filterTime);
+  }
+
+  clearTranscript(): void {
+    this.transcripts = [];
+    logger.info('Cleared voice transcript');
+  }
 }
 
 class UserAudioStream {
@@ -107,10 +130,12 @@ class UserAudioStream {
   constructor(
     private userId: string,
     private audioStream: any,
+    private guild: Guild,
     private textChannel: TextChannel | undefined,
     private genAI: GoogleGenerativeAI,
     private transcriptLogger: TranscriptLogger,
-    private onEnd: () => void
+    private onEnd: () => void,
+    private transcripts: Array<{ timestamp: string; speaker: string; text: string }>
   ) {
     this.opusDecoder = new prism.opus.Decoder({
       rate: 48000,
@@ -231,6 +256,22 @@ class UserAudioStream {
       const transcription = result.response.text();
 
       if (transcription && !transcription.toLowerCase().includes('no speech detected')) {
+        // Get username from Discord
+        let username = this.userId;
+        try {
+          const member = await this.guild.members.fetch(this.userId);
+          username = member.displayName || member.user.username;
+        } catch (error) {
+          logger.debug(`Could not fetch username for ${this.userId}`);
+        }
+        
+        // Store in memory
+        this.transcripts.push({
+          timestamp: new Date().toISOString(),
+          speaker: username,
+          text: transcription,
+        });
+        
         // Send to Discord if channel available
         if (this.textChannel) {
           await this.textChannel.send(`<@${this.userId}>: ${transcription}`);

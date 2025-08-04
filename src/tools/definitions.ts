@@ -1,28 +1,12 @@
 /**
  * Tool definitions for Discord Bot MCP
- * Organized by category for better maintainability
+ * Stateful approach - managing current server/channel internally
  */
 
 export const connectionTools = [
   {
-    name: 'bot_connect',
-    description: 'Connect the Discord bot',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-    },
-  },
-  {
-    name: 'bot_disconnect',
-    description: 'Disconnect the Discord bot',
-    inputSchema: {
-      type: 'object',
-      properties: {},
-    },
-  },
-  {
     name: 'bot_status',
-    description: 'Get the bot status and connection info',
+    description: 'Get the current bot status, connection info, and current state (server/channel)',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -30,217 +14,196 @@ export const connectionTools = [
   },
 ];
 
-export const guildTools = [
+export const navigationTools = [
   {
-    name: 'list_guilds',
-    description: 'List all guilds the bot is in',
+    name: 'list_servers',
+    description: 'List all Discord servers the bot has access to',
     inputSchema: {
       type: 'object',
       properties: {},
+    },
+  },
+  {
+    name: 'view_server',
+    description: 'View a specific server and set it as the current server',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        server_name: {
+          type: 'string',
+          description: 'Name of the server to view',
+        },
+      },
+      required: ['server_name'],
     },
   },
   {
     name: 'list_channels',
-    description: 'List all channels in a guild',
+    description: 'List all channels in the current server',
     inputSchema: {
       type: 'object',
-      properties: {
-        guildId: {
-          type: 'string',
-          description: 'Guild ID',
-        },
-      },
-      required: ['guildId'],
+      properties: {},
     },
   },
 ];
 
-export const voiceTools = [
+export const textChannelTools = [
   {
-    name: 'join_voice_channel',
-    description: 'Join a voice channel',
+    name: 'view_text_channel',
+    description: 'View a text channel and set it as the current channel',
     inputSchema: {
       type: 'object',
       properties: {
-        guildId: {
+        channel_name: {
           type: 'string',
-          description: 'Guild ID',
-        },
-        channelId: {
-          type: 'string',
-          description: 'Voice channel ID',
+          description: 'Name of the text channel to view',
         },
       },
-      required: ['guildId', 'channelId'],
-    },
-  },
-  {
-    name: 'leave_voice_channel',
-    description: 'Leave the current voice channel',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        guildId: {
-          type: 'string',
-          description: 'Guild ID',
-        },
-      },
-      required: ['guildId'],
-    },
-  },
-  {
-    name: 'speak_in_voice',
-    description: 'Use ElevenLabs TTS to speak in voice channel',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        guildId: {
-          type: 'string',
-          description: 'Guild ID where bot is connected',
-        },
-        text: {
-          type: 'string',
-          description: 'Text to speak',
-        },
-        voiceId: {
-          type: 'string',
-          description: 'ElevenLabs voice ID (optional)',
-        },
-      },
-      required: ['guildId', 'text'],
-    },
-  },
-  {
-    name: 'start_transcription',
-    description: 'Start transcribing voice in the current channel',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        guildId: {
-          type: 'string',
-          description: 'Guild ID',
-        },
-        textChannelId: {
-          type: 'string',
-          description: 'Text channel ID for transcripts (optional)',
-        },
-      },
-      required: ['guildId'],
-    },
-  },
-  {
-    name: 'stop_transcription',
-    description: 'Stop transcribing voice',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        guildId: {
-          type: 'string',
-          description: 'Guild ID',
-        },
-      },
-      required: ['guildId'],
-    },
-  },
-  {
-    name: 'get_voice_members',
-    description: 'Get list of members in a voice channel',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        channelId: {
-          type: 'string',
-          description: 'Voice channel ID',
-        },
-      },
-      required: ['channelId'],
-    },
-  },
-];
-
-export const messageTools = [
-  {
-    name: 'send_message',
-    description: 'Send a message to a text channel',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        channelId: {
-          type: 'string',
-          description: 'Text channel ID',
-        },
-        message: {
-          type: 'string',
-          description: 'Message content',
-        },
-      },
-      required: ['channelId', 'message'],
+      required: ['channel_name'],
     },
   },
   {
     name: 'read_messages',
-    description: 'Read recent messages from a text channel',
+    description: 'Read messages from the current text channel',
     inputSchema: {
       type: 'object',
       properties: {
-        channelId: {
-          type: 'string',
-          description: 'Text channel ID',
-        },
         limit: {
           type: 'number',
-          description: 'Number of messages to fetch (default: 10, max: 100)',
+          description: 'Number of messages to read (default: 10, max: 100)',
+          default: 10,
+        },
+        before_message_id: {
+          type: 'string',
+          description: 'Read messages before this message ID (for pagination)',
         },
       },
-      required: ['channelId'],
     },
   },
   {
-    name: 'send_message_with_attachment',
-    description: 'Send a message with an attachment (image/video URL)',
+    name: 'send_message',
+    description: 'Send a message to the current text channel',
     inputSchema: {
       type: 'object',
       properties: {
-        channelId: {
-          type: 'string',
-          description: 'Text channel ID',
-        },
         message: {
           type: 'string',
-          description: 'Message content (optional)',
-        },
-        attachmentUrl: {
-          type: 'string',
-          description: 'URL of the attachment',
-        },
-        attachmentName: {
-          type: 'string',
-          description: 'Name for the attachment file',
+          description: 'Message to send',
         },
       },
-      required: ['channelId', 'attachmentUrl'],
+      required: ['message'],
+    },
+  },
+  {
+    name: 'send_message_with_file',
+    description: 'Send a message with a file attachment to the current text channel',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        message: {
+          type: 'string',
+          description: 'Optional message to send with the file',
+        },
+        file_url: {
+          type: 'string',
+          description: 'URL of the file to attach',
+        },
+        file_name: {
+          type: 'string',
+          description: 'Name for the file attachment',
+        },
+      },
+      required: ['file_url'],
     },
   },
   {
     name: 'add_reaction',
-    description: 'Add a reaction emoji to a message',
+    description: 'Add a reaction emoji to a message in the current channel',
     inputSchema: {
       type: 'object',
       properties: {
-        channelId: {
+        message_id: {
           type: 'string',
-          description: 'Text channel ID',
-        },
-        messageId: {
-          type: 'string',
-          description: 'Message ID to react to',
+          description: 'ID of the message to react to',
         },
         emoji: {
           type: 'string',
-          description: 'Emoji to react with (e.g., "👍" or custom emoji "name:id")',
+          description: 'Emoji to react with (e.g., "👍" or ":thumbsup:")',
         },
       },
-      required: ['channelId', 'messageId', 'emoji'],
+      required: ['message_id', 'emoji'],
+    },
+  },
+];
+
+export const voiceChannelTools = [
+  {
+    name: 'join_voice_channel',
+    description: 'Join a voice channel and start transcribing automatically',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        channel_name: {
+          type: 'string',
+          description: 'Name of the voice channel to join',
+        },
+      },
+      required: ['channel_name'],
+    },
+  },
+  {
+    name: 'leave_voice_channel',
+    description: 'Leave the current voice channel and stop transcribing',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'speak',
+    description: 'Speak text in the current voice channel using text-to-speech',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        text: {
+          type: 'string',
+          description: 'Text to speak',
+        },
+        voice_id: {
+          type: 'string',
+          description: 'Optional ElevenLabs voice ID (defaults to configured voice)',
+        },
+      },
+      required: ['text'],
+    },
+  },
+  {
+    name: 'read_voice_transcript',
+    description: 'Read the current voice channel transcript',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        since: {
+          type: 'string',
+          description: 'Optional timestamp to read transcript from (ISO format)',
+        },
+      },
+    },
+  },
+  {
+    name: 'clear_voice_transcript',
+    description: 'Clear the voice channel transcript history',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'list_voice_members',
+    description: 'List members currently in the voice channel',
+    inputSchema: {
+      type: 'object',
+      properties: {},
     },
   },
 ];
@@ -248,7 +211,7 @@ export const messageTools = [
 // Export all tools as a single array
 export const allTools = [
   ...connectionTools,
-  ...guildTools,
-  ...voiceTools,
-  ...messageTools,
+  ...navigationTools,
+  ...textChannelTools,
+  ...voiceChannelTools,
 ];

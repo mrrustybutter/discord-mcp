@@ -142,6 +142,73 @@ discord-bot-mcp/
 | `ENABLE_TRANSCRIPT_LOGGING` | Save transcripts to files | `true` |
 | `TRANSCRIPT_DIR` | Directory for transcripts | `./transcripts` |
 
+## Testing
+
+### Quick Test with Curl (Stateless)
+
+```bash
+# Start the server
+pnpm dev:sse
+
+# Test with curl (no session needed)
+curl -X POST http://localhost:3003/message \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "bot_status",
+      "arguments": {}
+    },
+    "id": 1
+  }'
+
+# List available tools
+curl -X POST http://localhost:3003/message \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "method": "tools/list", "params": {}, "id": 1}'
+
+# Check server status
+curl http://localhost:3003/status
+```
+
+### Stateful Operations with Sessions
+
+For stateful operations (like setting current server/channel), create a session:
+
+```bash
+# Create a session
+SESSION_ID=$(curl -s http://localhost:3003/session | python3 -c "import sys, json; print(json.load(sys.stdin)['sessionId'])")
+
+# Use the session for stateful operations
+curl -X POST "http://localhost:3003/message?sessionId=$SESSION_ID" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "view_server",
+      "arguments": {"server_name": "RustyButter"}
+    },
+    "id": 1
+  }'
+
+# Now list channels will show channels from the current server
+curl -X POST "http://localhost:3003/message?sessionId=$SESSION_ID" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "list_channels",
+      "arguments": {}
+    },
+    "id": 2
+  }'
+```
+
+Sessions are maintained server-side for 30 minutes of inactivity.
+
 ## License
 
 MIT

@@ -1,8 +1,12 @@
 import { config as loadEnv } from 'dotenv';
-import { resolve } from 'path';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-// Load environment variables
-loadEnv({ path: resolve(process.cwd(), '.env') });
+// Get current directory for ES modules
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Load environment variables from project root
+loadEnv({ path: resolve(__dirname, '../../../.env') });
 
 export const config = {
   // Discord Configuration

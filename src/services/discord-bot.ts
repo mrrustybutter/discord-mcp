@@ -233,8 +233,18 @@ export class DiscordBotService {
       }
     }
 
+    // Get the guild from client
+    if (!this.client) {
+      throw new Error('Bot client not available');
+    }
+    
+    const guild = await this.client.guilds.fetch(guildId);
+    if (!guild) {
+      throw new Error('Guild not found');
+    }
+    
     // Create new transcription service
-    const transcriptionService = new TranscriptionService(connection, textChannel);
+    const transcriptionService = new TranscriptionService(connection, guild, textChannel);
     this.transcriptionServices.set(guildId, transcriptionService);
 
     // Start transcription
@@ -249,6 +259,24 @@ export class DiscordBotService {
 
     transcriptionService.stopTranscription();
     this.transcriptionServices.delete(guildId);
+  }
+
+  async getTranscript(guildId: string, since?: string): Promise<any[]> {
+    const transcriptionService = this.transcriptionServices.get(guildId);
+    if (!transcriptionService) {
+      return [];
+    }
+
+    return transcriptionService.getTranscript(since);
+  }
+
+  async clearTranscript(guildId: string): Promise<void> {
+    const transcriptionService = this.transcriptionServices.get(guildId);
+    if (!transcriptionService) {
+      throw new Error('No active transcription in this guild');
+    }
+
+    transcriptionService.clearTranscript();
   }
 
   async listGuilds() {
